@@ -1,0 +1,15 @@
+# build outputs
+build/
+platform/cortex-m/build/
+*.o
+*.d
+*.a
+*.elf
+*.map
+*.exe
+# python
+__pycache__/
+*.pyc
+# editors
+.vscode/
+*.swp

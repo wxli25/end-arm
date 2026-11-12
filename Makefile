@@ -70,6 +70,9 @@ test_kernels: $(BUILD)/test_kernels
 
 test_kat: $(BUILD)/test_kat
 	$(RUN) $(BUILD)/test_kat
+ifeq ($(END_N),512)
+	$(RUN) $(BUILD)/test_kat kat/kat_end512_ref.txt 100 --import
+endif
 
 test_roundtrip: $(BUILD)/test_roundtrip
 	$(RUN) $(BUILD)/test_roundtrip

@@ -11,7 +11,7 @@
 
 ### 1.1 结论
 
-- 已交付三套内核后端（`ref` 可移植 C、`aarch64` NEON、`armv7em` DSP）+ 一套与后端无关的方案层。两种参数集、三个后端的 **KeyGen / Encaps / Decaps 输出与参考实现逐位一致**（100 组 END-512 KAT、60 组 END-1024 KAT），并通过内核自检（约简穷举、NTT 往返、基乘法与教科书乘法比对、求逆）、随机往返、隐式拒绝、以及由 golden model 导出的 **wrap 注入**用例（单/双 gf-wrap、GF-wrap、gf+GF、超出 B0 的失败用例）。
+- 三个后端共用方案层。END-1024 使用参考实现的 60 组 KAT。END-512 用连续 SHAKE256 采样，使用 100 组新 KAT 验证 KeyGen，并用 100 组参考向量验证旧密钥的封装和解封装。内核自检、随机往返、隐式拒绝及 wrap 注入的覆盖范围见 [测试报告](TEST_REPORT.md)。
 - Decaps 的动态指令数（QEMU 插件统计，END-512，展开密钥）：AArch64 可移植 C 839 k → NEON 438 k（1.9×）；Cortex-M4 可移植 C 3.02 M → DSP 1.98 M（1.5×）。主机 x86-64 可移植 C：Encaps 35 k cycles、Decaps 158 k cycles（展开密钥）/ 240 k（紧凑密钥）、KeyGen 3.7 M cycles。详见 `PERFORMANCE.md`。
 - 解码器按论文语义并采用设计任务书 §5 的修正（V2 符号、V5 加倍域），**不是**逐位复刻参考实现的解码器；诚实密文不出现 wrap，因此不影响 KAT 兼容。对参考实现的三个疑点给出了实验证据（§11 DR-07/08/11）：END-1024 参考实现 3.5% 的解封装失败来自 `poly_norm2` 的 int16 溢出；gf 阶段 FCL 边界误用 128（应为 257）；候选修正项符号相反。
 
@@ -19,7 +19,7 @@
 
 | 编号 | 决策 | 选择 | 理由 |
 |---|---|---|---|
-| **D0** 规范基准 | 外部行为兼容 + 内部修正（任务书选项 C） | 采样/XOF 用法、NTRU 求解器、`w` 的定点计算、压缩、比特布局、编码、哈希全部沿用参考实现；解码按论文 Alg.6 在加倍域中实现并修正符号 | 字面实现论文不可对拍（V4 使 KeyGen 无解，Alg.6 第 7 步符号错）；逐位复刻参考解码器会继承 S1/S6 缺陷。KAT 覆盖诚实路径；wrap 路径由 golden model 覆盖 |
+| **D0** 规范基准 | 线格式兼容与内部修正 | NTRU 求解器、`w` 的定点计算、压缩、比特布局、编码和哈希沿用参考实现。END-512 采样使用连续 SHAKE256。解码在加倍域实现并修正符号 | KAT 验证生成及导入密钥的行为，golden model 覆盖 wrap 路径 |
 | **D1** Cortex-M KeyGen | **支持**，但默认建议主机侧生成 | 求解器实测只需 22·n 字节 scratch（canary 实测，§5.4），静态分配 11 KB（512）/ 22 KB（1024）；代码 ~60 KB；QEMU 指令数 28.8 M（512）/ 82 M（1024），168 MHz M4 上约 0.2–0.6 s | 可行且已在 QEMU-M4 上通过 KAT；但耗时与 RAM 远大于 Encaps/Decaps，产品部署建议注入私钥 |
 | **D2** 私钥形态 | 紧凑 sk 为线格式 + 运行期展开 `end_expkey` | sk = k‖pk‖f‖g‖F‖G‖w（3618/7235 B）；`expkey_from_sk` 预计算 NTT 形式（19 KB / 38 KB RAM）；Cortex-M 使用 `END_STATIC_EXPKEY` 静态单实例 | 展开节省约 1/3 的 Decaps 指令数（AArch64 616 k→438 k）；Flash 中只存紧凑形式 |
 | **D3** NTT 域排列 | NTT-257 使用参考实现排列（= pk 线格式）；NTT-3329/12289 各后端目前也用同一排列 | 基乘法在 NEON 中通过寄存器内转置实现，无需改变内存排列 | 跨后端中间值可直接比对，测试简单；未来 NEON 层合并可改内部排列（仅 3329/12289） |
@@ -165,8 +165,8 @@ platform/cortex-m/  Makefile link.ld startup.c randombytes_m.c
 
 ### L0 平台与安全基元
 
-- `fips202.c`：pq-crystals 实现（`shake128/256_squeezeblocks` 不使用 `pos`、`*_squeeze` 使用 `pos`——KeyGen 的 XOF 用法依赖此语义，见 DR-13）。
-- `randombytes.c`（主机）/ `platform/cortex-m/randombytes_m.c`（裸机）：返回 `int`，失败时随机版 KeyGen 和 Encaps 返回 `-1`。Cortex-M 的 `END_TEST_DRBG`（SHAKE256 计数器，仅测试用）由 QEMU 测试配置启用，`REAL_BOARD=1` 依赖板级 `platform_entropy`。
+- END-512 KeyGen 通过 `shake256_squeeze` 连续读取拒绝密钥和采样字节。END-1024 保留参考向量的块读取规则（DR-13）。
+- 随机版 KeyGen 和 Encaps 检查 `randombytes` 返回值。Cortex-M 的 `END_TEST_DRBG` 由 QEMU 测试配置启用，`REAL_BOARD=1` 依赖板级 `platform_entropy`。
 - 常数时间原语 `end_arith.h`：`ct_lt_u32/u64`（无分支比较）、`ct_mask_lt_u32`、`ct_eq/is_zero`、`ct_sel_i32`。
 - 计时：`bench/cycles.c`（rdtsc / CNTVCT / PMCCNTR / DWT）；栈涂色与 `platform_stack_used()`（`startup.c`）。
 
@@ -359,7 +359,7 @@ sequenceDiagram
 
 | DR | 对应 | 内容 | 处理 |
 |---|---|---|---|
-| DR-01 | §6-1 | f, g 为 i.i.d. 三元（512：6 bit → k<9 为 −1，k>54 为 +1；1024：位与/位差构造 P(±1)=3/32），非定重 T_{n,k} | 按参考实现（KAT 兼容） |
+| DR-01 | §6-1 | f, g 采样采用三元分布（512：6 bit → k<9 为 −1，k>54 为 +1；1024：位与/位差构造 P(±1)=3/32） | 两套参数沿用映射规则，END-512 的 XOF 读取规则见 DR-13 |
 | DR-02 | §6-2 | 求解器 ntrugen + profile；调用顺序 `(g, f)` 得 gF − fG = q；输出 G 在前 F 在后；需 22n 字节 scratch | 原样移植；scratch 用量 canary 实测 |
 | DR-03 | §6-3 | w 权重 6/3（论文 4/3）；w 用 31 位素数 NTT + 32.32 定点 FFT；`/20478` 去 Montgomery 因子；|w|=32768 边界不可表示（概率可忽略，保持与参考一致） | 按参考实现 |
 | DR-04 | V4 | 参考 512 版 CRT 恒取偶代表元、1024 版只看 Σw 奇偶，正确性依赖 Σf、Σg 恒为奇（`zint_bezout`） | 本实现存 `pwc1 = p₁·(Σw&1)`，对任意密钥正确；KAT 一致 |
@@ -371,7 +371,7 @@ sequenceDiagram
 | DR-10 | §6-10 / S5 | 哈希无域分离；512 用 SHA3-256、1024 用 SHA3-512；K = SHA3-256(m‖ct) | 默认剖面照用；`END_PROFILE_CLEAN` 未实现（会破坏 KAT） |
 | DR-11 | — | 参考 END-1024 `poly_norm2` 返回 int16，候选范数溢出导致错选，实测 14/400 解封装失败；改为 uint32 后 0/400 | 本实现 uint64 累加 |
 | DR-12 | §6-12 | pk/ct 编码格式 | 逐位移植；`__uint128_t` 除法改为 16 位 limb 倒数乘法（32 位目标可用） |
-| DR-13 | §6-13 | KeyGen XOF：SHAKE256 absorb → `shake256_squeeze(k)` → 在同一状态上 `shake128_squeezeblocks`（不改 pos）+ `shake128_squeeze`（用 pos）混用速率 | 逐字节复现（fips202 同实现）。已验证该用法使最后 48 个采样字节与第 200–247 字节相同；是否改为连续读取待与开发人员确认（会改变 END-512 的密钥） |
+| DR-13 | §6-13 | END-512 参考 KeyGen 在 SHAKE256 状态上混用 SHAKE128 的两种读取接口：`shake128_squeeze` 沿用过期的 `pos`，使最后 48 个采样字节与第 200–247 字节相同（`scripts/check_keygen_sampling.py`，100 个 KAT 种子均复现，结果见 `docs/keygen_sampling_512.csv`） | 经设计人员确认（2026-11-12）：拒绝密钥和三元采样均通过 `shake256_squeeze` 连续读取，END-512 的密钥因此与参考实现不同。旧向量用于导入密钥回归。END-1024 保留参考 XOF 行为 |
 | DR-14 | §6-14 | sk 无序列化 | 本设计紧凑格式 §8.3 |
 | DR-15 | §6-15 / S4 | 参考 FO 比较解码后的系数数组 | 改为密文字节比较（对合法密文等价；对非规范 1024 密文更严格，符合 FO） |
 | DR-16 | §7-S3 | 参考旋转用秘密下标 `w[abs(i−idx)]` | 全部后端用公开地址的桶形移位 |

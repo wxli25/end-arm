@@ -100,7 +100,7 @@ typedef struct END_ALIGN {
 
 ### 2.7 `end_keygen.c` —— 密钥生成
 
-- `ternary_sample(a, state)`：512 版：2 个 SHAKE128 块 + 48 B（在 SHAKE256 状态上），每字节 6 位 → {−1,0,1}；1024 版：5 个 SHAKE256 块，位运算构造。
+- `ternary_sample(a, state)`：512 版从 SHAKE256 连续读取 384 字节，每个 6 位组映射为一个三元系数。1024 版沿用参考实现的 5 个 SHAKE256 块和位运算构造。
 - `compute_w(logn, f, g, F, G, tmp)`：参考实现原样（RNS NTT mod 31 位素数 + 32.32 定点 FFT 除法），输出 `w·20478` 于 `tmp[0..n)`；返回 0 表示溢出 → 拒绝密钥。
 - `crypto_kem_keypair_derand(pk, sk, seed, tmp, tmplen)`：流程见 DESIGN §6 L4；`tmp` 需 ≥ `END_KEYGEN_TMPBYTES`。
 - `crypto_kem_keypair(pk, sk)`：`randombytes(seed)` + 上式；`END_STATIC_KEYGEN_TMP` 时 scratch 为静态。

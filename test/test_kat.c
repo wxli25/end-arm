@@ -55,7 +55,7 @@ static void print_field(const char *name, const uint8_t *buf, size_t len)
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] :
-        (END_N == 512 ? "kat/kat_end512_ref.txt" : "kat/kat_end1024_ref.txt");
+        (END_N == 512 ? "kat/kat_end512_shake256.txt" : "kat/kat_end1024_ref.txt");
     int maxn = argc > 2 ? atoi(argv[2]) : (END_N == 512 ? 100 : 60);
     int import = argc > 3 && strcmp(argv[3], "--import") == 0;
     int generate = argc > 3 && strcmp(argv[3], "--generate") == 0;

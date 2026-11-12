@@ -1,18 +1,28 @@
 # END KEM ARM 实现 · 测试验收报告
 
-## 2026-11-12 工程加固回归
+## 2026-11-12 修复回归
 
-本轮改动不改变任何计算结果：`randombytes` 返回错误码，随机版 KeyGen/Encaps 在熵源失败时返回 `-1` 且不写输出；Cortex-M 的测试 DRBG 只编进 QEMU 配置，`REAL_BOARD=1` 使用板级熵源；ARMv7E-M 内核改用 `memcpy` 打包访存（消除别名规则违例）；`END_M0_GF*` 限定在 1–8 并在编译期检查；测试与脚本对失败路径返回非零。
-
-| 配置 | 结果 |
+| 环境 | 本轮结果 |
 |---|---|
-| 主机 ref、qemu-aarch64 NEON（END-512 / END-1024） | 内核自检、参考 KAT（100 / 60 组，含 KeyGen 逐位比对）、20 次往返与篡改、9 个 wrap 用例、熵源失败/成功路径，全部通过 |
-| QEMU Cortex-M4 armv7em 与 ref（END-512 / END-1024） | 内核自检、参考 KAT（100 / 60 组）、10 次往返、9 个 wrap 用例，全部通过 |
-| QEMU Cortex-M33 armv7em（END-512） | 内核自检、5 组 KAT、5 次往返、9 个 wrap 用例，通过 |
-| Cortex-M4 板级配置（`REAL_BOARD=1`） | 编译通过 |
-| Python golden model | 参考 KAT 100 / 60 组、wrap 注入用例，通过 |
+| WSL 主机、QEMU AArch64 ref/NEON、QEMU Cortex-M4 ref/DSP | END-512 通过 100 组新 KAT 和 100 组参考密钥导入回归。END-1024 通过 60 组参考 KAT。各配置的内核、往返、隐式拒绝及 9 个 wrap 用例均通过 |
+| QEMU Cortex-M33 DSP | END-512 通过内核测试、新旧各 5 组 KAT、5 次往返及 9 个 wrap 用例 |
+| WSL 主机扩展测试 | 两套参数各 2,000 次随机往返及篡改密文检查，零失败。FCL 两阶段取 4 和 8 时，两套参数的 KAT、往返及熵源测试通过 ASan/UBSan。取 0 或 9 时编译报错 |
+| Python golden model | 检查 100 组新 END-512 向量、60 组 END-1024 向量和两套 wrap 注入用例 |
+| 失败路径 | 缺失 ELF、KAT 数量不足、模拟器失败和基准文件缺失均返回非零。板级熵源模拟测试确认失败时 API 返回 `-1` 且输出缓冲区不变 |
 
-END-512 KeyGen 的 XOF 读取方式（参考实现会重复 48 个采样字节，见 DESIGN DR-13）是否修改，待与开发人员确认；本轮保持与参考实现兼容。
+Cortex-M4 板级配置编译通过，随机数对象中没有固定种子测试源。DSP NTT 的打包访存仍编译为内联加载和存储。真机和板级 TRNG 接入待验证。
+
+使用原 END-512 向量的种子和消息重新生成回归向量：
+
+```bash
+make END_N=512 build/host-ref-512/test_kat
+build/host-ref-512/test_kat kat/kat_end512_ref.txt 100 --generate > kat/kat_end512_shake256.txt
+python3 golden/end_golden.py kat/kat_end512_shake256.txt --n 512 --max 100
+```
+
+## 2026-11-12 工程加固回归（提交 3f4f568）
+
+该提交只含不改变计算结果的加固：`randombytes` 返回错误码；Cortex-M 测试 DRBG 只编进 QEMU 配置；ARMv7E-M 内核改用 `memcpy` 打包访存；`END_M0_GF*` 限定在 1–8；测试与脚本对失败路径返回非零。当时 END-512 KeyGen 仍与参考实现逐位一致，主机、qemu-aarch64 NEON、QEMU Cortex-M4（DSP/ref）、Cortex-M33 及 golden model 的 16 项回归全部通过。END-512 采样随后按上节修改。
 
 ## 2026-11-06 初版记录
 
@@ -77,6 +87,6 @@ make END_N=1024 BACKEND=aarch64 ARCH=aarch64 CC=aarch64-linux-gnu-gcc CFLAGS=-O3
 (cd platform/cortex-m && make END_N=512 BACKEND=armv7em all && make END_N=1024 BACKEND=armv7em all && make END_N=512 BACKEND=ref all && make END_N=1024 BACKEND=ref all)
 bash scripts/qemu_m_tests.sh 512 armv7em; bash scripts/qemu_m_tests.sh 1024 armv7em
 bash scripts/qemu_m_tests.sh 512 ref;     bash scripts/qemu_m_tests.sh 1024 ref
-(cd platform/cortex-m && make END_N=512 BACKEND=armv7em CPU=cortex-m33 all) && bash scripts/qemu_m_run.sh platform/cortex-m/build/armv7em-512-cortex-m33/test_kat.elf cortex-m33 mps2-an505 x kat/kat_end512_ref.txt 5
-python3 golden/end_golden.py kat/kat_end512_ref.txt --n 512 --max 20 && python3 golden/test_wraps.py
+(cd platform/cortex-m && make END_N=512 BACKEND=armv7em CPU=cortex-m33 all) && KAT_MAX=5 RT_N=5 bash scripts/qemu_m_tests.sh 512 armv7em cortex-m33 mps2-an505
+python3 golden/end_golden.py kat/kat_end512_shake256.txt --n 512 --max 100 && python3 golden/test_wraps.py
 ```

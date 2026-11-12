@@ -13,7 +13,7 @@
 | `test/`, `bench/`, `kat/` | 测试程序、基准程序、参考实现 KAT |
 | `docs/` | 设计文档、代码阅读文档、测试报告、性能报告 |
 
-三个后端在两种参数集下的 **KAT（含密钥生成）与参考实现 `dde0a77` 逐位一致**，并通过内核自检、随机往返、隐式拒绝与 wrap 注入测试（见 `docs/TEST_REPORT.md`）。
+END-512 的 KeyGen 使用连续 SHAKE256 流，确定性回归使用 `kat/kat_end512_shake256.txt`。原 END-512 向量继续验证已有密钥的封装和解封装。END-1024 仍使用参考实现 `dde0a77` 的 KeyGen、封装和解封装向量。详见 [测试报告](docs/TEST_REPORT.md)。
 
 ## 快速开始
 
@@ -33,7 +33,7 @@ cd platform/cortex-m && make END_N=512 BACKEND=armv7em all && cd ../..
 bash scripts/qemu_m_tests.sh 512 armv7em
 
 # 4. golden model
-python3 golden/end_golden.py kat/kat_end512_ref.txt --n 512 --max 20
+python3 golden/end_golden.py kat/kat_end512_shake256.txt --n 512 --max 100
 python3 golden/test_wraps.py
 ```
 

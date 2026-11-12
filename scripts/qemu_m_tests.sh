@@ -14,7 +14,8 @@ run() {
 kat="kat/kat_end${N}_ref.txt"
 run test_kernels
 if [[ "$N" == 512 ]]; then
-    run test_kat "$kat" "${KAT_MAX:-100}"
+    run test_kat kat/kat_end512_shake256.txt "${KAT_MAX:-100}"
+    run test_kat "$kat" "${KAT_MAX:-100}" --import
 else
     run test_kat "$kat" "${KAT_MAX:-60}"
 fi

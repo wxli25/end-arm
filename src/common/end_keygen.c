@@ -1,11 +1,10 @@
 /*
- * END KEM -- key generation (L4 + Alg. 7 / Alg. 12), bit-exact with the reference implementation:
+ * END KEM -- key generation (L4 + Alg. 7 / Alg. 12):
  *   seed --SHAKE256--> k, then f, g (ternary, invertible mod 257), h = g f^-1 (NTT-257 domain),
  *   (F, G) from the NTRU solver (ntrugen profile SOLVE_END_257_*), w from compute_w (fixed-point FFT).
  *
  * compute_w() and the solver profiles are taken verbatim from the reference keygen.c (itself derived
- * from Thomas Pornin's ntrugen); the XOF usage of the reference is reproduced exactly (SHAKE256 state,
- * squeezed with the SHAKE128 block size for END-512).
+ * from Thomas Pornin's ntrugen). END-512 consumes a continuous SHAKE256 stream.
  */
 #include <string.h>
 #include "end_internal.h"
@@ -205,13 +204,12 @@ static int compute_w(unsigned logn, const int8_t *restrict f, const int8_t *rest
 /* ternary sampling (reference poly.c / keygen.c)                             */
 /* ------------------------------------------------------------------------- */
 #if END_N == 512
-/* 384 bytes (2 SHAKE128 blocks + 48) -> 512 samples; k = 6-bit value: -1 if k < 9, +1 if k > 54 */
+/* 384 consecutive SHAKE256 bytes -> 512 samples; k < 9 gives -1, k > 54 gives +1. */
 void ternary_sample(int8_t a[END_N], keccak_state *state)
 {
     uint8_t buf[384];
     unsigned i = 0, j;
-    shake128_squeezeblocks(buf, 2, state);
-    shake128_squeeze(buf + 336, 48, state);
+    shake256_squeeze(buf, sizeof buf, state);
     for (j = 0; j < END_N; j += 4) {
         uint8_t x = buf[i++], y = buf[i++], z = buf[i++], k;
         int8_t m_neg, m_pos;

@@ -20,33 +20,31 @@ static inline int32_t red257_pair(int32_t x)
 
 void poly_ntt257(int16_t a[END_N])
 {
-    int32_t *w = (int32_t *)a;
     unsigned i, len, start, j, k = 1;
     for (i = 0; i < END_N / 2; i++)
-        w[i] = red257_pair(w[i]);
+        dsp_store_pair(a, i, red257_pair(dsp_load_pair(a, i)));
     for (len = END_N >> 1; len >= L; len >>= 1) {
         unsigned hl = len >> 1;
         for (start = 0; start < END_N / 2; start += len) {
             int32_t z = end_zetas257_mont[k++];
             int32_t zq = (int16_t)(z * PINV);
             for (j = start; j < start + hl; j++) {
-                int32_t x = w[j], y = w[j + hl];
+                int32_t x = dsp_load_pair(a, j), y = dsp_load_pair(a, j + hl);
                 int32_t t = dsp_montmul_pair(y, z, zq, NEGP);
-                w[j + hl] = dsp_ssub16(x, t);
-                w[j] = dsp_sadd16(x, t);
+                dsp_store_pair(a, j + hl, dsp_ssub16(x, t));
+                dsp_store_pair(a, j, dsp_sadd16(x, t));
             }
         }
     }
     for (i = 0; i < END_N / 2; i++)
-        w[i] = red257_pair(w[i]);
+        dsp_store_pair(a, i, red257_pair(dsp_load_pair(a, i)));
 }
 
 void poly_intt257(int16_t a[END_N])
 {
-    int32_t *w = (int32_t *)a;
     unsigned i, len, b, j;
     for (i = 0; i < END_N / 2; i++)
-        w[i] = red257_pair(w[i]);
+        dsp_store_pair(a, i, red257_pair(dsp_load_pair(a, i)));
     for (len = L; len <= END_N >> 1; len <<= 1) {
         unsigned nb = END_N / (2 * len), hl = len >> 1;
         for (b = 0; b < nb; b++) {
@@ -54,16 +52,16 @@ void poly_intt257(int16_t a[END_N])
             int32_t zq = (int16_t)(z * PINV);
             unsigned start = len * b;
             for (j = start; j < start + hl; j++) {
-                int32_t x = w[j], y = w[j + hl];
-                w[j] = red257_pair(dsp_sadd16(x, y));
-                w[j + hl] = dsp_montmul_pair(dsp_ssub16(x, y), z, zq, NEGP);
+                int32_t x = dsp_load_pair(a, j), y = dsp_load_pair(a, j + hl);
+                dsp_store_pair(a, j, red257_pair(dsp_sadd16(x, y)));
+                dsp_store_pair(a, j + hl, dsp_montmul_pair(dsp_ssub16(x, y), z, zq, NEGP));
             }
         }
     }
     {
         int32_t z = END_INV128_MONT_MOD257, zq = (int16_t)(z * PINV);
         for (i = 0; i < END_N / 2; i++)
-            w[i] = red257_pair(dsp_montmul_pair(w[i], z, zq, NEGP));
+            dsp_store_pair(a, i, red257_pair(dsp_montmul_pair(dsp_load_pair(a, i), z, zq, NEGP)));
     }
 }
 
@@ -77,19 +75,17 @@ static inline int16_t leaf_zeta257(unsigned blk)
 /* leaf product mod (x^4 - z): dual 16-bit MACs on packed pairs A01 = [a1:a0], A23 = [a3:a2] */
 void poly_basemul257(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N])
 {
-    const int32_t *wa = (const int32_t *)a, *wb = (const int32_t *)b;
-    int32_t *wr = (int32_t *)r;
     unsigned blk;
     for (blk = 0; blk < END_N / 4; blk++) {
-        int32_t A01 = wa[2 * blk], A23 = wa[2 * blk + 1], B01 = wb[2 * blk], B23 = wb[2 * blk + 1];
+        int32_t A01 = dsp_load_pair(a, 2 * blk), A23 = dsp_load_pair(a, 2 * blk + 1), B01 = dsp_load_pair(b, 2 * blk), B23 = dsp_load_pair(b, 2 * blk + 1);
         int32_t z = leaf_zeta257(blk);
         int32_t h0 = dsp_smultt(A01, B23) + dsp_smultt(A23, B01) + dsp_smulbb(A23, B23);   /* a1b3 + a3b1 + a2b2 */
         int32_t r0 = dsp_smulbb(A01, B01) + z * h0;
         int32_t r1 = dsp_smuadx(A01, B01) + z * dsp_smuadx(A23, B23);                     /* a0b1+a1b0 + z(a2b3+a3b2) */
         int32_t r2 = dsp_smulbb(A01, B23) + dsp_smultt(A01, B01) + dsp_smulbb(A23, B01) + z * dsp_smultt(A23, B23);
         int32_t r3 = dsp_smuadx(A01, B23) + dsp_smuadx(A23, B01);
-        wr[2 * blk] = dsp_pkhbt(red257_32(r0), red257_32(r1));
-        wr[2 * blk + 1] = dsp_pkhbt(red257_32(r2), red257_32(r3));
+        dsp_store_pair(r, 2 * blk, dsp_pkhbt(red257_32(r0), red257_32(r1)));
+        dsp_store_pair(r, 2 * blk + 1, dsp_pkhbt(red257_32(r2), red257_32(r3)));
     }
 }
 #else

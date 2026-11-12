@@ -9,7 +9,9 @@
  *   dec                       : decapsulation from the compact secret key
  *   expkey_from_sk + dec_exp  : decapsulation from a pre-expanded key (saves ~15 NTTs per call)
  *
- * All functions return 0 on success. Decapsulation never fails observably (implicit rejection).
+ * All functions return 0 on success. Randomized key generation and encapsulation
+ * return -1 on entropy failure, leaving their output buffers untouched.
+ * Decapsulation uses implicit rejection.
  */
 #ifndef END_API_H
 #define END_API_H
@@ -67,6 +69,7 @@ int END_NS(crypto_kem_dec_exp)(uint8_t *ss, const uint8_t *ct, const end_expkey 
 #define END_SK_FF(sk) ((const int8_t *)((sk) + END_SK_OFF_FF))
 #define END_SK_GG(sk) ((const int8_t *)((sk) + END_SK_OFF_GG))
 
-void END_NS(randombytes)(uint8_t *out, size_t outlen);
+/* Platform entropy provider. Return 0 after filling out, or -1 on failure. */
+int END_NS(randombytes)(uint8_t *out, size_t outlen);
 
 #endif /* END_API_H */

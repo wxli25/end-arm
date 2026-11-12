@@ -41,7 +41,8 @@ static int read_field(FILE *fp, const char *name, char **val)
 
 int main(int argc, char **argv)
 {
-    const char *katpath = argc > 1 ? argv[1] : "kat/kat_end512_ref.txt";
+    const char *katpath = argc > 1 ? argv[1] :
+        (END_N == 512 ? "kat/kat_end512_ref.txt" : "kat/kat_end1024_ref.txt");
     const char *wrpath = argc > 2 ? argv[2] : (END_N == 512 ? "kat/wraps_end512.txt" : "kat/wraps_end1024.txt");
     FILE *fp;
     char *v;
@@ -87,7 +88,7 @@ int main(int argc, char **argv)
         if (expect_ok) {
             if (!(ok && same)) { fails++; printf("  [FAIL] %s (found=%d same=%d gf_cand=%u GF_cand=%u S_gf=(%u,%u) S_GF=(%u,%u))\n",
                                                 name, ok, same, (unsigned)diag[0], (unsigned)diag[1], (unsigned)diag[2], (unsigned)diag[3], (unsigned)diag[4], (unsigned)diag[5]); }
-            else printf("  [PASS] %s (gf_cand=%u GF_cand=%u)\n", name, diag[0], diag[1]);
+            else printf("  [PASS] %s (gf_cand=%u GF_cand=%u)\n", name, (unsigned)diag[0], (unsigned)diag[1]);
         } else {
             if (ok && same) { fails++; printf("  [FAIL] %s: decoder succeeded where it must not\n", name); }
             else printf("  [PASS] %s (found=%d same=%d)\n", name, ok, same);

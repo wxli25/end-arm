@@ -11,6 +11,20 @@
 #define END_DSP_H
 
 #include <stdint.h>
+#include <string.h>
+
+/* Copy the representation of a coefficient pair without violating C aliasing rules. */
+static inline int32_t dsp_load_pair(const int16_t *a, unsigned word)
+{
+    int32_t value;
+    memcpy(&value, a + 2 * word, sizeof value);
+    return value;
+}
+
+static inline void dsp_store_pair(int16_t *a, unsigned word, int32_t value)
+{
+    memcpy(a + 2 * word, &value, sizeof value);
+}
 
 #define DSP2(name, insn) \
     static inline int32_t name(int32_t a, int32_t b) { int32_t r; __asm__(insn " %0, %1, %2" : "=r"(r) : "r"(a), "r"(b)); return r; }

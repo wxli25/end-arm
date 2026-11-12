@@ -25,33 +25,31 @@ static inline int32_t canon_pair(int32_t x)
 
 void poly_ntt3329(int16_t a[END_N])
 {
-    int32_t *w = (int32_t *)a;
     unsigned i, len, start, j, k = 1;
     for (i = 0; i < END_N / 2; i++)
-        w[i] = barrett_pair(w[i]);
+        dsp_store_pair(a, i, barrett_pair(dsp_load_pair(a, i)));
     for (len = END_N >> 1; len >= L; len >>= 1) {
         unsigned hl = len >> 1;
         for (start = 0; start < END_N / 2; start += len) {
             int32_t z = end_zetas3329_mont[k++];
             int32_t zq = (int16_t)(z * PINV);
             for (j = start; j < start + hl; j++) {
-                int32_t x = w[j], y = w[j + hl];
+                int32_t x = dsp_load_pair(a, j), y = dsp_load_pair(a, j + hl);
                 int32_t t = dsp_montmul_pair(y, z, zq, NEGP);
-                w[j + hl] = dsp_ssub16(x, t);
-                w[j] = dsp_sadd16(x, t);
+                dsp_store_pair(a, j + hl, dsp_ssub16(x, t));
+                dsp_store_pair(a, j, dsp_sadd16(x, t));
             }
         }
     }
     for (i = 0; i < END_N / 2; i++)
-        w[i] = canon_pair(w[i]);
+        dsp_store_pair(a, i, canon_pair(dsp_load_pair(a, i)));
 }
 
 void poly_intt3329(int16_t a[END_N])
 {
-    int32_t *w = (int32_t *)a;
     unsigned i, len, b, j, layer = 0;
     for (i = 0; i < END_N / 2; i++)
-        w[i] = barrett_pair(w[i]);
+        dsp_store_pair(a, i, barrett_pair(dsp_load_pair(a, i)));
     for (len = L; len <= END_N >> 1; len <<= 1) {
         unsigned nb = END_N / (2 * len), hl = len >> 1;
         int reduce = ((++layer) % 3) == 0;
@@ -60,19 +58,19 @@ void poly_intt3329(int16_t a[END_N])
             int32_t zq = (int16_t)(z * PINV);
             unsigned start = len * b;
             for (j = start; j < start + hl; j++) {
-                int32_t x = w[j], y = w[j + hl];
+                int32_t x = dsp_load_pair(a, j), y = dsp_load_pair(a, j + hl);
                 int32_t s = dsp_sadd16(x, y);
-                w[j] = reduce ? barrett_pair(s) : s;
-                w[j + hl] = dsp_montmul_pair(dsp_ssub16(x, y), z, zq, NEGP);
+                dsp_store_pair(a, j, reduce ? barrett_pair(s) : s);
+                dsp_store_pair(a, j + hl, dsp_montmul_pair(dsp_ssub16(x, y), z, zq, NEGP));
             }
         }
     }
     {
         int32_t z = END_INV128_MONT_MOD3329, zq = (int16_t)(z * PINV);
         for (i = 0; i < END_N / 2; i++) {
-            int32_t t = dsp_montmul_pair(w[i], z, zq, NEGP);     /* (-p, p) */
+            int32_t t = dsp_montmul_pair(dsp_load_pair(a, i), z, zq, NEGP);     /* (-p, p) */
             int32_t lo = barrett3329((int16_t)dsp_lo(t)), hi = barrett3329((int16_t)dsp_hi(t));
-            w[i] = dsp_pkhbt(lo, hi);
+            dsp_store_pair(a, i, dsp_pkhbt(lo, hi));
         }
     }
 }

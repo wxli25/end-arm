@@ -53,6 +53,8 @@ int end512_crypto_kem_dec_exp(uint8_t *ss, const uint8_t *ct, const end_expkey *
 
 尺寸（字节）：END-512 pk 514 / ct 384 / sk 3618 / ss 32；END-1024 pk 1027 / ct 832 / sk 7235 / ss 32。
 
+随机版 KeyGen 和 Encaps 在熵源失败时返回 `-1`，输出缓冲区保持原值。外部 `randombytes` 实现须返回 `int`，成功填满缓冲区后返回 `0`，失败返回 `-1`。Cortex-M 的 QEMU 配置使用固定种子测试源。`REAL_BOARD=1` 使用独立的 `*-board` 构建目录，随机版 API 要求真机提供 `platform_entropy`，成功填满缓冲区后返回 `1`。板级启动和链接配置按目标板接入。
+
 ## 文档
 
 - `docs/DESIGN.md`：设计文档（决策 D0–D4、数学依据 V1–V7、模块与内核设计、数值范围、常数时间、DR 记录）

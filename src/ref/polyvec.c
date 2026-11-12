@@ -58,7 +58,7 @@ void poly_cmov32(int32_t r[END_N], const int32_t a[END_N], uint32_t mask)
  */
 void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N])
 {
-    uint32_t best[8], bidx[8];
+    uint32_t best[END_FCL_MAX], bidx[END_FCL_MAX];
     unsigned i, j;
     for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0; }
     for (i = 0; i < END_N; i++) {

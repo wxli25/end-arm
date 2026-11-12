@@ -151,7 +151,7 @@ static void test_ntt(void)
     {
         uint32_t fp = 0;
         for (i = 0; i < END_N; i++) fp = fp * 2654435761u + (uint32_t)a[i];
-        printf("ntt257 layout fingerprint: %08x\n", fp);
+        printf("ntt257 layout fingerprint: %08x\n", (unsigned)fp);
     }
     printf("ntt: done (%d failures so far)\n", fails);
 }

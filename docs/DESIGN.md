@@ -166,7 +166,7 @@ platform/cortex-m/  Makefile link.ld startup.c randombytes_m.c
 ### L0 平台与安全基元
 
 - `fips202.c`：pq-crystals 实现（`shake128/256_squeezeblocks` 不使用 `pos`、`*_squeeze` 使用 `pos`——KeyGen 的 XOF 用法依赖此语义，见 DR-13）。
-- `randombytes.c`（主机）/ `platform/cortex-m/randombytes_m.c`（裸机，SHAKE256 计数器 DRBG，**仅测试用**，预留 `platform_entropy()` 钩子）。
+- `randombytes.c`（主机）/ `platform/cortex-m/randombytes_m.c`（裸机）：返回 `int`，失败时随机版 KeyGen 和 Encaps 返回 `-1`。Cortex-M 的 `END_TEST_DRBG`（SHAKE256 计数器，仅测试用）由 QEMU 测试配置启用，`REAL_BOARD=1` 依赖板级 `platform_entropy`。
 - 常数时间原语 `end_arith.h`：`ct_lt_u32/u64`（无分支比较）、`ct_mask_lt_u32`、`ct_eq/is_zero`、`ct_sel_i32`。
 - 计时：`bench/cycles.c`（rdtsc / CNTVCT / PMCCNTR / DWT）；栈涂色与 `platform_stack_used()`（`startup.c`）。
 
@@ -251,7 +251,7 @@ return found  (0 ⇒ 解密失败，上层通过 FO 隐式拒绝)
 | 宏 | 作用 |
 |---|---|
 | `END_N` | 512/1024 |
-| `END_M0_GF`, `END_M0_GF2` | FCL 输出规模（默认 2；候选数随之变化） |
+| `END_M0_GF`, `END_M0_GF2` | FCL 输出规模（默认 2，允许 1–8，候选数组按两阶段的较大容量分配） |
 | `END_FULL_SCORE` | 预留：gf/GF 阶段加入 μ̄ 项（需 G、G_Q 的 NTT-3329 形式，`expkey` 已含字段） |
 | `END_STATIC_EXPKEY`, `END_STATIC_KEYGEN_TMP` | Cortex-M：用静态缓冲代替栈（19/38 KB 与 11/22 KB） |
 | `END_RANDOMBYTES_EXTERNAL` | 裸机：平台提供 `randombytes` |
@@ -371,7 +371,7 @@ sequenceDiagram
 | DR-10 | §6-10 / S5 | 哈希无域分离；512 用 SHA3-256、1024 用 SHA3-512；K = SHA3-256(m‖ct) | 默认剖面照用；`END_PROFILE_CLEAN` 未实现（会破坏 KAT） |
 | DR-11 | — | 参考 END-1024 `poly_norm2` 返回 int16，候选范数溢出导致错选，实测 14/400 解封装失败；改为 uint32 后 0/400 | 本实现 uint64 累加 |
 | DR-12 | §6-12 | pk/ct 编码格式 | 逐位移植；`__uint128_t` 除法改为 16 位 limb 倒数乘法（32 位目标可用） |
-| DR-13 | §6-13 | KeyGen XOF：SHAKE256 absorb → `shake256_squeeze(k)` → 在同一状态上 `shake128_squeezeblocks`（不改 pos）+ `shake128_squeeze`（用 pos）混用速率 | 逐字节复现（fips202 同实现） |
+| DR-13 | §6-13 | KeyGen XOF：SHAKE256 absorb → `shake256_squeeze(k)` → 在同一状态上 `shake128_squeezeblocks`（不改 pos）+ `shake128_squeeze`（用 pos）混用速率 | 逐字节复现（fips202 同实现）。已验证该用法使最后 48 个采样字节与第 200–247 字节相同；是否改为连续读取待与开发人员确认（会改变 END-512 的密钥） |
 | DR-14 | §6-14 | sk 无序列化 | 本设计紧凑格式 §8.3 |
 | DR-15 | §6-15 / S4 | 参考 FO 比较解码后的系数数组 | 改为密文字节比较（对合法密文等价；对非规范 1024 密文更严格，符合 FO） |
 | DR-16 | §7-S3 | 参考旋转用秘密下标 `w[abs(i−idx)]` | 全部后端用公开地址的桶形移位 |

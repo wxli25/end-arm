@@ -156,7 +156,8 @@ int END_NS(crypto_kem_enc_derand)(uint8_t *ct, uint8_t *ss, const uint8_t *pk, c
 int END_NS(crypto_kem_enc)(uint8_t *ct, uint8_t *ss, const uint8_t *pk)
 {
     uint8_t m[END_MSGBYTES];
-    END_NS(randombytes)(m, END_MSGBYTES);
+    if (END_NS(randombytes)(m, sizeof m) != 0)
+        return -1;
     return END_NS(crypto_kem_enc_derand)(ct, ss, pk, m);
 }
 

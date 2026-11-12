@@ -60,6 +60,10 @@
 #ifndef END_M0_GF2
 #define END_M0_GF2      2              /* FCL output size m0 of the GF stage */
 #endif
+#define END_FCL_MAX 8
+#if END_M0_GF < 1 || END_M0_GF > END_FCL_MAX || END_M0_GF2 < 1 || END_M0_GF2 > END_FCL_MAX
+#error "END_M0_GF and END_M0_GF2 must be in [1, 8]"
+#endif
 #define END_NCAND_GF    (1 + 2 * END_M0_GF + 4 * ((END_M0_GF * (END_M0_GF - 1)) / 2))   /* |E_cand| for B0 = 2, B1 = 1 */
 #define END_NCAND_GF2   (1 + 2 * END_M0_GF2 + 4 * ((END_M0_GF2 * (END_M0_GF2 - 1)) / 2))
 

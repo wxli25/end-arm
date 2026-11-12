@@ -56,6 +56,9 @@ $(BUILD)/test_kat: test/test_kat.c $(BUILD)/libend.a
 $(BUILD)/test_roundtrip: test/test_roundtrip.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) $< -o $@ $(BUILD)/libend.a $(LDFLAGS) $(LDLIBS)
 
+$(BUILD)/test_entropy: test/test_entropy.c platform/cortex-m/randombytes_m.c $(BUILD)/libend.a
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) $^ -o $@ $(LDFLAGS) $(LDLIBS)
+
 $(BUILD)/test_wraps: test/test_wraps.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) $< -o $@ $(BUILD)/libend.a $(LDFLAGS) $(LDLIBS)
 
@@ -66,7 +69,7 @@ test_kernels: $(BUILD)/test_kernels
 	$(RUN) $(BUILD)/test_kernels
 
 test_kat: $(BUILD)/test_kat
-	$(RUN) $(BUILD)/test_kat kat/kat_end$(END_N)_ref.txt
+	$(RUN) $(BUILD)/test_kat
 
 test_roundtrip: $(BUILD)/test_roundtrip
 	$(RUN) $(BUILD)/test_roundtrip
@@ -74,7 +77,10 @@ test_roundtrip: $(BUILD)/test_roundtrip
 test_wraps: $(BUILD)/test_wraps
 	$(RUN) $(BUILD)/test_wraps kat/kat_end$(END_N)_ref.txt
 
-test_all: test_kernels test_kat test_roundtrip test_wraps
+test_entropy: $(BUILD)/test_entropy
+	$(RUN) $(BUILD)/test_entropy
+
+test_all: test_kernels test_kat test_roundtrip test_wraps test_entropy
 
 bench: $(BUILD)/bench
 	$(RUN) $(BUILD)/bench
@@ -84,4 +90,4 @@ clean:
 
 -include $(wildcard $(BUILD)/src/*/*.d $(BUILD)/src/*/*/*.d)
 
-.PHONY: lib test_kernels test_kat test_roundtrip test_wraps test_all bench clean
+.PHONY: lib test_kernels test_kat test_roundtrip test_wraps test_entropy test_all bench clean

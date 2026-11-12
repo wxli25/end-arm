@@ -1,5 +1,21 @@
 # END KEM ARM 实现 · 测试验收报告
 
+## 2026-11-12 工程加固回归
+
+本轮改动不改变任何计算结果：`randombytes` 返回错误码，随机版 KeyGen/Encaps 在熵源失败时返回 `-1` 且不写输出；Cortex-M 的测试 DRBG 只编进 QEMU 配置，`REAL_BOARD=1` 使用板级熵源；ARMv7E-M 内核改用 `memcpy` 打包访存（消除别名规则违例）；`END_M0_GF*` 限定在 1–8 并在编译期检查；测试与脚本对失败路径返回非零。
+
+| 配置 | 结果 |
+|---|---|
+| 主机 ref、qemu-aarch64 NEON（END-512 / END-1024） | 内核自检、参考 KAT（100 / 60 组，含 KeyGen 逐位比对）、20 次往返与篡改、9 个 wrap 用例、熵源失败/成功路径，全部通过 |
+| QEMU Cortex-M4 armv7em 与 ref（END-512 / END-1024） | 内核自检、参考 KAT（100 / 60 组）、10 次往返、9 个 wrap 用例，全部通过 |
+| QEMU Cortex-M33 armv7em（END-512） | 内核自检、5 组 KAT、5 次往返、9 个 wrap 用例，通过 |
+| Cortex-M4 板级配置（`REAL_BOARD=1`） | 编译通过 |
+| Python golden model | 参考 KAT 100 / 60 组、wrap 注入用例，通过 |
+
+END-512 KeyGen 的 XOF 读取方式（参考实现会重复 48 个采样字节，见 DESIGN DR-13）是否修改，待与开发人员确认；本轮保持与参考实现兼容。
+
+## 2026-11-06 初版记录
+
 日期：2026-11-06。环境：WSL Ubuntu 24.04（gcc 13.3、aarch64-linux-gnu-gcc 13.3、arm-none-eabi-gcc 13.2、QEMU 8.2 / 自建 9.1）。
 参考实现：`Explore_NTRU_Decryption` @ `dde0a77`，用确定性 DRBG（`seed‖ctr` 的 SHAKE256）在主机上生成 KAT：`kat/kat_end512_ref.txt`（100 组）、`kat/kat_end1024_ref.txt`（60 组）；每组含 `keygen_seed, pk, f, g, F, G, w, k, m, ct, ss`。
 

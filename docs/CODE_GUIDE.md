@@ -179,7 +179,7 @@ NEON 中所有数据排列与 ref 相同（`test_kernels` 的 NTT-257 指纹 `93
 
 - `link.ld`：FLASH 0x00000000/4 MB、RAM 0x20000000/4 MB（QEMU mps2）；可用 `-Wl,--defsym` 覆盖；`STACK_SIZE` 默认 128 KB；提供 `_sidata/_sdata/_edata/_sbss/_ebss/_estack/_sstack/_heap_limit/end`。
 - `startup.c`：向量表（`.vectors`）、`Reset_Handler`（拷 .data、清 .bss、开 FPU、栈涂色、`initialise_monitor_handles`、半主机 `SYS_GET_CMDLINE` 取 argv、`main`、`exit`）、`platform_stack_used()`、`_sbrk`。
-- `randombytes_m.c`：测试用 DRBG（SHAKE256(seed‖ctr)），`platform_entropy()` 弱符号供 TRNG 接入。
+- `randombytes_m.c`：QEMU 配置启用测试用 DRBG（SHAKE256(seed‖ctr)）。板级构建调用 `platform_entropy()`，熵源失败时随机版 KEM API 返回 `-1`。
 - `Makefile`：`END_N`、`BACKEND`（ref/armv7em）、`CPU`（cortex-m4/cortex-m33 → 自动选 FPU 标志与 QEMU 机型）、`OPT`；目标 `all` 生成 `test_kernels/test_kat/test_roundtrip/test_wraps/bench` 五个 ELF；`run-<name>` 在 QEMU 下运行。
 
 ---

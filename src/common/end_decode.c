@@ -68,8 +68,8 @@ int decode_trap(int16_t sbar[END_N], const end_expkey *ek, const int16_t cprime[
     int16_t rv[END_N] END_ALIGN;       /* rounding vector r of a candidate */
     int16_t wrot[M0A][END_N] END_ALIGN, Frot[M0A][END_N] END_ALIGN;
     int16_t frot[M0B][END_N] END_ALIGN;
-    uint32_t sc[END_N], idx[8];
-    cand_t cand[32];
+    uint32_t sc[END_N], idx[END_FCL_MAX];
+    cand_t cand[END_NCAND_GF > END_NCAND_GF2 ? END_NCAND_GF : END_NCAND_GF2];
     uint64_t best_score;
     uint32_t found, best_i, i, ci, nc;
 

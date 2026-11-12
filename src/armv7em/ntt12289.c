@@ -24,65 +24,63 @@ static inline int32_t barrett_pair(int32_t x)
     int32_t a = barrett12289((int16_t)dsp_lo(x)), b = barrett12289((int16_t)dsp_hi(x));
     return dsp_pkhbt(a, b);
 }
-static inline void reduce_all(int32_t *w)
+static inline void reduce_all(int16_t *a)
 {
     unsigned i;
-    for (i = 0; i < END_N / 2; i++) w[i] = barrett_pair(w[i]);
+    for (i = 0; i < END_N / 2; i++) dsp_store_pair(a, i, barrett_pair(dsp_load_pair(a, i)));
 }
 
 void poly_ntt12289(int16_t a[END_N])
 {
-    int32_t *w = (int32_t *)a;
     unsigned i, len, start, j, k = 1, layer = 0;
-    reduce_all(w);
+    reduce_all(a);
     for (len = END_N >> 1; len >= 2; len >>= 1) {
         unsigned hl = len >> 1;
         for (start = 0; start < END_N / 2; start += len) {
             int32_t z = ZETAS[k++];
             int32_t zq = (int16_t)(z * PINV);
             for (j = start; j < start + hl; j++) {
-                int32_t x = w[j], y = w[j + hl];
+                int32_t x = dsp_load_pair(a, j), y = dsp_load_pair(a, j + hl);
                 int32_t t = dsp_montmul_pair(y, z, zq, NEGP);
-                w[j + hl] = dsp_ssub16(x, t);
-                w[j] = dsp_sadd16(x, t);
+                dsp_store_pair(a, j + hl, dsp_ssub16(x, t));
+                dsp_store_pair(a, j, dsp_sadd16(x, t));
             }
         }
         if ((++layer & 1) == 0)
-            reduce_all(w);
+            reduce_all(a);
     }
     if (layer & 1)
-        reduce_all(w);
+        reduce_all(a);
     /* len = 1: pairs inside a word, one twiddle per word */
     for (j = 0; j < END_N / 2; j++) {
-        int32_t x = w[j];
+        int32_t x = dsp_load_pair(a, j);
         int32_t z = ZETAS[k++];
         int32_t zq = (int16_t)(z * PINV);
         int32_t t = dsp_smultb(x, z), m = dsp_smultb(x, zq);
         int32_t r = dsp_smlabb(m, NEGP, t) >> 16;                 /* x.hi * z mod p */
         int32_t lo = (int16_t)x;
-        w[j] = dsp_pkhbt(lo + r, lo - r);
+        dsp_store_pair(a, j, dsp_pkhbt(lo + r, lo - r));
     }
     for (i = 0; i < END_N / 2; i++) {
-        int32_t t = barrett_pair(w[i]);
-        w[i] = dsp_pkhbt(canon12289((int16_t)dsp_lo(t)), canon12289((int16_t)dsp_hi(t)));
+        int32_t t = barrett_pair(dsp_load_pair(a, i));
+        dsp_store_pair(a, i, dsp_pkhbt(canon12289((int16_t)dsp_lo(t)), canon12289((int16_t)dsp_hi(t))));
     }
 }
 
 void poly_intt12289(int16_t a[END_N])
 {
-    int32_t *w = (int32_t *)a;
     unsigned i, len, b, j, idx = 0, layer = 0;
-    reduce_all(w);
+    reduce_all(a);
     /* len = 1 */
     for (j = 0; j < END_N / 2; j++) {
-        int32_t x = w[j];
+        int32_t x = dsp_load_pair(a, j);
         int32_t z = ZETAS_INV[idx++];
         int32_t zq = (int16_t)(z * PINV);
         int32_t lo = (int16_t)x, hi = x >> 16;
         int32_t d = lo - hi, s = barrett12289((int16_t)(lo + hi));
         int32_t t = dsp_smulbb(d, z), m = dsp_smulbb(d, zq);
         int32_t r = dsp_smlabb(m, NEGP, t) >> 16;
-        w[j] = dsp_pkhbt(s, r);
+        dsp_store_pair(a, j, dsp_pkhbt(s, r));
     }
     /* GS sums are reduced every layer: inputs of a layer are then bounded by p, differences by 2p < 2^15 */
     for (len = 2; len < END_N; len <<= 1) {
@@ -92,9 +90,9 @@ void poly_intt12289(int16_t a[END_N])
             int32_t zq = (int16_t)(z * PINV);
             unsigned start = len * b;
             for (j = start; j < start + hl; j++) {
-                int32_t x = w[j], y = w[j + hl];
-                w[j] = barrett_pair(dsp_sadd16(x, y));
-                w[j + hl] = dsp_montmul_pair(dsp_ssub16(x, y), z, zq, NEGP);
+                int32_t x = dsp_load_pair(a, j), y = dsp_load_pair(a, j + hl);
+                dsp_store_pair(a, j, barrett_pair(dsp_sadd16(x, y)));
+                dsp_store_pair(a, j + hl, dsp_montmul_pair(dsp_ssub16(x, y), z, zq, NEGP));
             }
         }
     }
@@ -102,27 +100,25 @@ void poly_intt12289(int16_t a[END_N])
     {
         int32_t z = NINV_MONT, zq = (int16_t)(z * PINV);
         for (i = 0; i < END_N / 2; i++) {
-            int32_t t = dsp_montmul_pair(w[i], z, zq, NEGP);
+            int32_t t = dsp_montmul_pair(dsp_load_pair(a, i), z, zq, NEGP);
             int32_t lo = barrett12289((int16_t)dsp_lo(t)), hi = barrett12289((int16_t)dsp_hi(t));
-            w[i] = dsp_pkhbt(lo, hi);
+            dsp_store_pair(a, i, dsp_pkhbt(lo, hi));
         }
     }
 }
 
 void poly_pointwise12289(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N])
 {
-    const int32_t *wa = (const int32_t *)a, *wb = (const int32_t *)b;
-    int32_t *wr = (int32_t *)r;
     unsigned i;
     const int32_t r2 = END_MONT_R2_MOD12289, r2q = (int16_t)(r2 * PINV);
     for (i = 0; i < END_N / 2; i++) {
-        int32_t x = wa[i], y = wb[i];
+        int32_t x = dsp_load_pair(a, i), y = dsp_load_pair(b, i);
         /* per half: t = x*y ; montgomery -> x y R^-1 ; then * R^2 montgomery -> x y */
         int32_t t0 = dsp_smulbb(x, y), t1 = dsp_smultt(x, y);
-        int32_t m0 = (int16_t)(t0 * PINV), m1 = (int16_t)(t1 * PINV);
+        int32_t m0 = (int16_t)((uint32_t)t0 * (uint32_t)PINV), m1 = (int16_t)((uint32_t)t1 * (uint32_t)PINV);
         int32_t u0 = dsp_smlabb(m0, NEGP, t0) >> 16, u1 = dsp_smlabb(m1, NEGP, t1) >> 16;
         int32_t u = dsp_pkhbt(u0, u1);
         int32_t v = dsp_montmul_pair(u, r2, r2q, NEGP);
-        wr[i] = dsp_pkhbt(canon12289((int16_t)dsp_lo(v)), canon12289((int16_t)dsp_hi(v)));
+        dsp_store_pair(r, i, dsp_pkhbt(canon12289((int16_t)dsp_lo(v)), canon12289((int16_t)dsp_hi(v))));
     }
 }

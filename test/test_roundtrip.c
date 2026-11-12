@@ -15,10 +15,14 @@ int main(int argc, char **argv)
     static uint8_t ss[END_SSBYTES], ss2[END_SSBYTES], ss3[END_SSBYTES], buf[END_MSGBYTES + END_CTBYTES];
     static end_expkey ek;
     int i, fails = 0;
+    if (n < 1) {
+        fprintf(stderr, "Expected a positive iteration count\n");
+        return 2;
+    }
     printf("test_roundtrip %s: %d iterations\n", END_NAME, n);
     for (i = 0; i < n; i++) {
         if (END_NS(crypto_kem_keypair)(pk, sk)) { printf("keypair failed\n"); return 1; }
-        END_NS(crypto_kem_enc)(ct, ss, pk);
+        if (END_NS(crypto_kem_enc)(ct, ss, pk)) { printf("encaps failed\n"); return 1; }
         END_NS(crypto_kem_dec)(ss2, ct, sk);
         if (memcmp(ss, ss2, END_SSBYTES)) { printf("iter %d: shared secret mismatch\n", i); fails++; }
         END_NS(expkey_from_sk)(&ek, sk);

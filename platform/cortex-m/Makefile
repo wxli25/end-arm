@@ -30,20 +30,22 @@ LDDEFS       ?=
 
 CFLAGS   = -mcpu=$(CPU) -mthumb $(FPUFLAGS) $(OPT) -g -ffunction-sections -fdata-sections -fno-common \
            -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -std=gnu99
-# REAL_BOARD=1 enables the DWT cycle counter (QEMU does not model it -> END_NO_DWT by default)
+# The QEMU profile enables the test DRBG. The board profile requires platform entropy.
 ifeq ($(REAL_BOARD),1)
-DWTFLAG =
+PLATFORM_FLAGS =
+BUILD_SUFFIX = -board
 else
-DWTFLAG = -DEND_NO_DWT
+PLATFORM_FLAGS = -DEND_NO_DWT -DEND_TEST_DRBG
+BUILD_SUFFIX =
 endif
-CPPFLAGS = -DEND_N=$(END_N) -DEND_BACKEND_NAME=\"$(BACKEND)\" -DEND_RANDOMBYTES_EXTERNAL -DEND_STATIC_EXPKEY $(DWTFLAG) \
+CPPFLAGS = -DEND_N=$(END_N) -DEND_BACKEND_NAME=\"$(BACKEND)\" -DEND_RANDOMBYTES_EXTERNAL -DEND_STATIC_EXPKEY $(PLATFORM_FLAGS) \
            -DEND_STATIC_KEYGEN_TMP -DEND_PLATFORM_STACK -I$(ROOT)/src/common -I$(ROOT)/src/common/ntrugen -I$(ROOT)/src/$(BACKEND) \
            -I$(ROOT)/src/ref -I$(ROOT)/bench -I.
 LDFLAGS  = -T link.ld --specs=rdimon.specs --specs=nano.specs -Wl,--gc-sections -nostartfiles $(LDDEFS) \
            -Wl,-Map=$@.map
 LDLIBS   = -lc -lrdimon -lm
 
-BUILD := build/$(BACKEND)-$(END_N)-$(CPU)
+BUILD := build/$(BACKEND)-$(END_N)-$(CPU)$(BUILD_SUFFIX)
 
 KERNELS      := ntt257 ntt3329 ntt12289 polyvec baseinv257
 KERNEL_SRCS  := $(foreach k,$(KERNELS),$(if $(wildcard $(ROOT)/src/$(BACKEND)/$(k).c),$(ROOT)/src/$(BACKEND)/$(k).c,$(ROOT)/src/ref/$(k).c))
@@ -91,7 +93,7 @@ $(BUILD)/bench.elf: $(ROOT)/bench/bench.c $(BUILD)/libend.a
 # run under QEMU with semihosting; file paths in the tests are relative to the project root
 QEMU_ARGS = -M $(QEMU_MACHINE) -cpu $(CPU) -nographic -semihosting-config enable=on,target=native -monitor none -serial none
 run-%: $(BUILD)/%.elf
-	cd $(ROOT) && $(QEMU) $(QEMU_ARGS) -kernel platform/cortex-m/$< ; true
+	cd $(ROOT) && $(QEMU) $(QEMU_ARGS) -kernel platform/cortex-m/$<
 
 clean:
 	rm -rf build

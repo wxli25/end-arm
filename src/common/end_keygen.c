@@ -314,6 +314,7 @@ int END_NS(crypto_kem_keypair)(uint8_t *pk, uint8_t *sk)
 #else
     uint8_t tmp[END_KEYGEN_TMPBYTES];
 #endif
-    END_NS(randombytes)(seed, END_SEEDBYTES);
+    if (END_NS(randombytes)(seed, sizeof seed) != 0)
+        return -1;
     return END_NS(crypto_kem_keypair_derand)(pk, sk, seed, tmp, sizeof tmp);
 }

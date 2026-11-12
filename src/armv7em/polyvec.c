@@ -41,22 +41,21 @@ void poly_rot16(int16_t r[END_N], const int16_t a[END_N], uint32_t k)
 
 uint64_t poly_sqnorm16(const int16_t a[END_N])
 {
-    const int32_t *w = (const int32_t *)a;
     int64_t acc = 0;
     unsigned i;
-    for (i = 0; i < NW; i++)
-        acc = dsp_smlald(w[i], w[i], acc);
+    for (i = 0; i < NW; i++) {
+        int32_t pair = dsp_load_pair(a, i);
+        acc = dsp_smlald(pair, pair, acc);
+    }
     return (uint64_t)acc;
 }
 
 void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask)
 {
-    int32_t *wr = (int32_t *)r;
-    const int32_t *wa = (const int32_t *)a;
     uint32_t m = (uint32_t)mask | ((uint32_t)mask << 16);
     unsigned i;
     for (i = 0; i < NW; i++)
-        wr[i] = (int32_t)(((uint32_t)wa[i] & m) | ((uint32_t)wr[i] & ~m));
+        dsp_store_pair(r, i, (int32_t)(((uint32_t)dsp_load_pair(a, i) & m) | ((uint32_t)dsp_load_pair(r, i) & ~m)));
 }
 
 void poly_cmov32(int32_t r[END_N], const int32_t a[END_N], uint32_t mask)
@@ -68,7 +67,7 @@ void poly_cmov32(int32_t r[END_N], const int32_t a[END_N], uint32_t mask)
 
 void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N])
 {
-    uint32_t best[8], bidx[8];
+    uint32_t best[END_FCL_MAX], bidx[END_FCL_MAX];
     unsigned i, j;
     for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0; }
     for (i = 0; i < END_N; i++) {

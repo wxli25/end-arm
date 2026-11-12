@@ -205,11 +205,11 @@ static int compute_w(unsigned logn, const int8_t *restrict f, const int8_t *rest
 /* ------------------------------------------------------------------------- */
 #if END_N == 512
 /* 384 consecutive SHAKE256 bytes -> 512 samples; k < 9 gives -1, k > 54 gives +1. */
-void ternary_sample(int8_t a[END_N], keccak_state *state)
+void ternary_sample(int8_t a[END_N], end_xof_state *state)
 {
     uint8_t buf[384];
     unsigned i = 0, j;
-    shake256_squeeze(buf, sizeof buf, state);
+    end_xof_squeeze(buf, sizeof buf, state);
     for (j = 0; j < END_N; j += 4) {
         uint8_t x = buf[i++], y = buf[i++], z = buf[i++], k;
         int8_t m_neg, m_pos;
@@ -222,12 +222,12 @@ void ternary_sample(int8_t a[END_N], keccak_state *state)
 }
 #else
 /* 680 bytes (5 SHAKE256 blocks); f = (b1 & b2 - b3 & b4) * b5 with independent bits (P(+-1) = 3/32) */
-void ternary_sample(int8_t f[END_N], keccak_state *state)
+void ternary_sample(int8_t f[END_N], end_xof_state *state)
 {
     uint8_t buf[680];
     int8_t tmp1[2 * END_N], tmp2[2 * END_N];
     unsigned i, j, t = 0;
-    shake256_squeezeblocks(buf, 5, state);
+    end_xof_squeezeblocks(buf, 5, state);
     for (i = 0; i < 8; i++)
         for (j = 0; j < 256; j++)
             tmp1[i * 256 + j] = (int8_t)((buf[t + j] >> i) & 1);
@@ -251,7 +251,7 @@ void ternary_sample(int8_t f[END_N], keccak_state *state)
 int END_NS(crypto_kem_keypair_derand)(uint8_t *pk, uint8_t *sk, const uint8_t seed[END_SEEDBYTES],
                                       void *tmp, size_t tmplen)
 {
-    keccak_state state;
+    end_xof_state state;
     int16_t f_inv[END_N] END_ALIGN, t1[END_N] END_ALIGN, t2[END_N] END_ALIGN;
     int8_t *f = (int8_t *)(sk + END_SK_OFF_F), *g = (int8_t *)(sk + END_SK_OFF_G);
     uintptr_t utmp1 = (uintptr_t)tmp, utmp2 = (utmp1 + 7) & ~(uintptr_t)7;
@@ -263,8 +263,8 @@ int END_NS(crypto_kem_keypair_derand)(uint8_t *pk, uint8_t *sk, const uint8_t se
 
     if (tmplen < (size_t)(utmp2 - utmp1) + 22 * END_N)
         return -1;
-    shake256_absorb_once(&state, seed, END_SEEDBYTES);
-    shake256_squeeze(sk + END_SK_OFF_K, END_MSGBYTES, &state);        /* implicit-rejection secret k */
+    end_xof_absorb_once(&state, seed, END_SEEDBYTES);
+    end_xof_squeeze(sk + END_SK_OFF_K, END_MSGBYTES, &state);        /* implicit-rejection secret k */
     for (;;) {
         do {
             ternary_sample(f, &state);
@@ -300,6 +300,7 @@ int END_NS(crypto_kem_keypair_derand)(uint8_t *pk, uint8_t *sk, const uint8_t se
         }
         break;
     }
+    end_xof_release(&state);
     memcpy(sk + END_SK_OFF_PK, pk, END_PKBYTES);
     return 0;
 }

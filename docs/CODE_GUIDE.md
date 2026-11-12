@@ -209,7 +209,14 @@ NEON 中所有数据排列与 ref 相同（`test_kernels` 的 NTT-257 指纹 `93
 
 ---
 
-## 10. 构建矩阵与一致性
+## 10. `pqm4/` 与 `src/common/end_xof.h`
+
+- `end_xof.h`：KeyGen 使用的 SHAKE256 接口（`end_xof_absorb_once / squeeze / squeezeblocks / release`）。默认映射到 `src/common/fips202.c`；定义 `END_PQM4` 时映射到 pqm4 的 `shake256_inc_*`，以便 pqm4 统计哈希时间。
+- `pqm4/export_pqm4.py <pqm4目录>`：生成 `crypto_kem/end{512,1024}/{ref,m4}` 扁平目录（含 `api.h`、`end_config.h`、`pqm4_glue.c`）；`--icount` 额外安装 `mupq/crypto_kem/icount_*.c`；`--clean` 卸载。
+- `pqm4/pqm4_glue.c`：`crypto_kem_*` 到 `end512_/end1024_crypto_kem_*` 的映射，`randombytes` 接 pqm4 随机源。
+- `pqm4/icount_pqm4.sh`：用 QEMU 插件按累计工作量（none/keypair/enc/dec）求每个操作的指令数，适用于 pqm4 中任意 KEM。
+
+## 11. 构建矩阵与一致性
 
 | 平台 | 命令 | 验证内容 |
 |---|---|---|

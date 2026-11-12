@@ -100,7 +100,46 @@
 
 bss 中包含静态展开密钥（19/38 KB）、静态 KeyGen scratch（11/22 KB）与基准程序的静态缓冲；库本身的 .data 可忽略。栈峰值主要来自 `decode_trap`（≈20/40 KB）加 KEM/PKE 层的缓冲，后续可通过复用缓冲区压缩（DESIGN §13）。原始输出见 `docs/stack_results.txt`。
 
-## 6. 测量方法与复现
+## 6. pqm4 框架下与 ML-KEM 的对比（2026-11-12）
+
+END 已接入 pqm4（见 `pqm4/README.md`），以下数据都用 pqm4 自己的 harness、HAL、随机源和 Keccak 汇编测得，可以直接与 pqm4 中其他方案比较。平台为 QEMU mps2-an386（Cortex-M4），pqm4 提交 `0dd10ee`，`arm-none-eabi-gcc` 13.2，`-O3`。
+
+**动态指令数**（QEMU TCG 插件 libinsn，`pqm4/icount_pqm4.sh`，单次运行，pqm4 的确定性随机源）：
+
+| 方案 / 实现 | KeyGen | Encaps | Decaps |
+|---|---:|---:|---:|
+| END-512 m4（DSP） | 28 496 835 | 241 173 | 2 727 488 |
+| END-512 ref | 28 523 996 | 266 039 | 3 591 739 |
+| ML-KEM-512 m4fspeed | 353 341 | 350 139 | 376 445 |
+| ML-KEM-512 m4fstack | 353 830 | 352 041 | 378 729 |
+| ML-KEM-512 clean | 484 775 | 566 409 | 696 340 |
+| ML-KEM-768 m4fspeed | 569 590 | 583 332 | 619 022 |
+| END-1024 m4（DSP） | 129 915 638 | 490 789 | 6 008 730 |
+| END-1024 ref | 130 180 098 | 538 570 | 7 745 877 |
+| ML-KEM-1024 m4fspeed | 900 011 | 909 698 | 956 512 |
+| ML-KEM-1024 clean | 1 238 928 | 1 378 798 | 1 593 997 |
+
+**栈峰值**（pqm4 stack 基准，字节）：
+
+| 方案 / 实现 | KeyGen | Encaps | Decaps |
+|---|---:|---:|---:|
+| END-512 m4 / ref | 15 644 | 5 024 | 41 328 / 41 324 |
+| ML-KEM-512 m4fspeed / m4fstack | 4 372 / 2 300 | 5 436 / 2 348 | 5 412 / 2 332 |
+| END-1024 m4 / ref | 34 024 | 11 324 | 82 416 / 82 412 |
+| ML-KEM-1024 m4fspeed / m4fstack | 6 436 / 3 332 | 7 500 / 3 372 | 7 484 / 3 356 |
+
+**代码尺寸**（pqm4 size 基准，`.text` 字节）：END-512 m4 72 218、ref 70 550；END-1024 m4 77 122、ref 75 334；ML-KEM-512 m4fspeed 15 848；ML-KEM-1024 m4fspeed 16 916。
+
+**哈希占比**（pqm4 hashing 基准，QEMU 时钟下的比例，仅作参考）：END-512 m4 KeyGen 6.8%、Encaps 9.2%、Decaps 0.7%；ML-KEM-512 m4fspeed 为 52.6%、13.2%、17.4%。
+
+结论：
+- **Encaps**：END-512 比 ML-KEM-512 m4fspeed 少约 31% 指令（241 k 对 350 k），END-1024 比 ML-KEM-1024 少约 46%。END 的封装只有一次 NTRU 乘法加压缩。
+- **Decaps**：END-512 约为 ML-KEM-512 m4fspeed 的 7.2 倍，END-1024 约为 6.3 倍。主要开销在陷门解码（9 个候选，每个候选一次 NTT-3329 乘法）和 NTT-12289，是后续手写汇编优化的重点。
+- **KeyGen**：END 需要求解 NTRU 方程（ntrugen），约为 ML-KEM 的 80–140 倍，与论文的定位一致（适合公钥长期复用）。
+- **栈与代码**：END 的解封装栈约为 ML-KEM m4fspeed 的 7.6（512）/ 11（1024）倍，代码尺寸约为 4.5 倍，主要来自求解器和展开密钥。
+- 以上为指令数。真板周期数需在 NUCLEO-L4R5ZI 上用 `benchmarks.py -p nucleo-l4r5zi` 测量（命令见 `pqm4/README.md`）。
+
+## 7. 测量方法与复现
 
 ```bash
 # 主机周期数

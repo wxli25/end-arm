@@ -1,5 +1,17 @@
 # END KEM ARM 实现 · 测试验收报告
 
+## 2026-11-12 接入 pqm4
+
+- 新增 `pqm4/`：导出脚本、胶水代码、指令数 harness。KeyGen 的 SHAKE256 改经 `src/common/end_xof.h` 适配，pqm4 构建使用 pqm4 的 Keccak 汇编，本仓库构建仍用自带 `fips202.c`，输出逐字节相同。
+- 修复：ARMv7E-M 内核的系数对读写改用 `__builtin_memcpy`。pqm4 平台带 `-ffreestanding`，普通 `memcpy` 在 DSP 内核里变成了函数调用，使 m4 版解封装慢到 7.9 M 条指令；修复后为 2.73 M。
+
+| 验证 | 结果 |
+|---|---|
+| pqm4 `test.py -p mps2-an386`：end512/end1024 的 m4、ref | 4 个实现全部 SUCCESSFUL（含无效密文的隐式拒绝检查） |
+| pqm4 `testvectors.py -p mps2-an386`：板上实现与主机 ref 逐字节比对 | 4 个实现全部 SUCCESSFUL |
+| pqm4 `benchmarks.py -p mps2-an386`：speed、stack、hashing、size | 全部运行成功，数据见 PERFORMANCE §6 |
+| 本仓库全套回归（主机、qemu-aarch64 NEON、QEMU Cortex-M4/M33、KAT 重新生成、golden model） | 见下一节同日记录，修改后重新运行并通过 |
+
 ## 2026-11-12 修复回归
 
 | 环境 | 本轮结果 |

@@ -13,17 +13,19 @@
 #include <stdint.h>
 #include <string.h>
 
-/* Copy the representation of a coefficient pair without violating C aliasing rules. */
+/* Copy the representation of a coefficient pair without violating C aliasing rules.
+ * __builtin_memcpy (not memcpy): pqm4 compiles with -ffreestanding, where a plain memcpy
+ * becomes a library call per coefficient pair; the builtin always folds to one LDR/STR. */
 static inline int32_t dsp_load_pair(const int16_t *a, unsigned word)
 {
     int32_t value;
-    memcpy(&value, a + 2 * word, sizeof value);
+    __builtin_memcpy(&value, a + 2 * word, sizeof value);
     return value;
 }
 
 static inline void dsp_store_pair(int16_t *a, unsigned word, int32_t value)
 {
-    memcpy(a + 2 * word, &value, sizeof value);
+    __builtin_memcpy(a + 2 * word, &value, sizeof value);
 }
 
 #define DSP2(name, insn) \

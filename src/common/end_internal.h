@@ -9,7 +9,7 @@
 #include "end_params.h"
 #include "end_api.h"
 #include "poly.h"
-#include "fips202.h"
+#include "end_xof.h"
 
 /* ---- codec (L3) ----------------------------------------------------- */
 void END_NS(pk_encode)(uint8_t out[END_PKBYTES], const int16_t h_ntt[END_N]);  /* h in [0,257), NTT-257 layout */
@@ -80,7 +80,7 @@ int  END_NS(pke_decrypt)(uint8_t m[END_MSGBYTES], const end_expkey *ek, const ui
 #define pke_decrypt  END_NS(pke_decrypt)
 
 /* ---- key generation internals (L4) ----------------------------------- */
-void END_NS(ternary_sample)(int8_t a[END_N], keccak_state *state);
+void END_NS(ternary_sample)(int8_t a[END_N], end_xof_state *state);
 #define ternary_sample END_NS(ternary_sample)
 
 #endif /* END_INTERNAL_H */

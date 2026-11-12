@@ -60,7 +60,8 @@ int end512_crypto_kem_dec_exp(uint8_t *ss, const uint8_t *ct, const end_expkey *
 - `docs/DESIGN.md`：设计文档（决策 D0–D4、数学依据 V1–V7、模块与内核设计、数值范围、常数时间、DR 记录）
 - `docs/CODE_GUIDE.md`：代码阅读理解文档（每个模块的功能、入口/出口、调用关系、阅读顺序）
 - `docs/TEST_REPORT.md`：测试验收报告
-- `docs/PERFORMANCE.md`：性能统计（主机周期数、QEMU 动态指令数、栈/代码尺寸）
+- `docs/PERFORMANCE.md`：性能统计（主机周期数、QEMU 动态指令数、栈/代码尺寸，pqm4 框架下与 ML-KEM 的对比）
+- `pqm4/README.md`：接入 pqm4 基准框架的步骤（导出、测试、基准、真板测量）
 
 ## 许可与来源
 

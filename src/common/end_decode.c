@@ -5,7 +5,7 @@
  *   C2 = (Q c2 - w c1) mod 2qQ (centred),  F_Q = Q F - w f,  G_Q = Q G - w g,
  *   s~' = (c1 F_Q - C2 f) / (qQ)  =  s~ - 2 e1 F + 2 e2 f           (exact division; computed mod 3329)
  *   gf stage : for a candidate e~ (sparse, +-1):  r = round((C2 - 2 q w e~)/(2qQ)),  s~'' = s~' + 2 e~ F + 2 r f
- *              C2~ = C2 - 2 q w e~ - 2qQ r ;  score = |s~''|^2 (+ |mu~''|^2 with END_FULL_SCORE)
+ *              C2~ = C2 - 2 q w e~ - 2qQ r ;  score = |s~''|^2
  *   GF stage : for a candidate e~ (sparse, +-1):  s~ = s~'' - 2 e~ f ;  accept iff all entries are +-1.
  *
  * Every loop bound, memory address and candidate count is public; secret-dependent choices are made

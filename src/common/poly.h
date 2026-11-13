@@ -29,7 +29,6 @@
 #define poly_rot16 END_NS(poly_rot16)
 #define poly_sqnorm16 END_NS(poly_sqnorm16)
 #define poly_cmov16 END_NS(poly_cmov16)
-#define poly_cmov32 END_NS(poly_cmov32)
 #define fcl_select END_NS(fcl_select)
 
 
@@ -66,7 +65,6 @@ void poly_rot16(int16_t r[END_N], const int16_t a[END_N], uint32_t k);
 uint64_t poly_sqnorm16(const int16_t a[END_N]);
 /* r = mask ? a : r   (mask is 0 or all-ones) */
 void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask);
-void poly_cmov32(int32_t r[END_N], const int32_t a[END_N], uint32_t mask);
 /* Free Candidate Localization: indices of the m0 smallest scores (ties: smaller index first) */
 void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N]);
 

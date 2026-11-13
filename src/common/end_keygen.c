@@ -13,12 +13,6 @@
 #include "big_integer.h"
 #include "ntru.h"
 #include "ntrugen_poly.h"
-#ifdef END_KEYGEN_TRACE
-#include <stdio.h>
-#define KTRACE(...) do { printf(__VA_ARGS__); putchar(10); } while (0)
-#else
-#define KTRACE(...) do { } while (0)
-#endif
 
 #if END_N == 512
 static const ntru_profile SOLVE_END_PROFILE = {
@@ -48,7 +42,9 @@ static const ntru_profile SOLVE_END_PROFILE = {
  * Compute the vector w (reference keygen.c, compute_w):
  *   w = round(q'*(gamma2*F*adj(f) + G*adj(g))/(gamma2*f*adj(f) + g*adj(g))),  q' = 12289
  * Returned value: 1 on success, 0 on error (overflow -> reject the key).
- * Value of w*R (R = 2^32 mod p = 20478) is written at the start of tmp[] (plain 32-bit).
+ * w is written at the start of tmp[] as plain signed 32-bit integers (|w| <= 2^15).
+ * The reference also computed |q'F - fw|^2 and |q'G - gw|^2 here without using them; that dead
+ * computation (and the Montgomery round trip of w it implied) is omitted, w is unchanged.
  * RAM USAGE: 4.5*n words
  */
 static int compute_w(unsigned logn, const int8_t *restrict f, const int8_t *restrict g,
@@ -72,7 +68,6 @@ static int compute_w(unsigned logn, const int8_t *restrict f, const int8_t *rest
     fxr *rt1, *rt2;
     int32_t lim1;
     fxr lim2;
-    uint64_t Fdnorm = 0, Gdnorm = 0;
     size_t u;
 
     mp_mkgm(logn, gm, PRIMES[0].g, p, p0i);
@@ -153,49 +148,6 @@ static int compute_w(unsigned logn, const int8_t *restrict f, const int8_t *rest
             return 0;
         }
         t1[u] = (uint32_t)fxr_round(fxr_mul2e(rt1[u], 12));
-    }
-    /* norm check of (gamma*Fd, Gd), Fd = q'*F - f*w, Gd = q'*G - g*w (values computed, not used for rejection) */
-    gm = igm = t4;
-    mp_mkgm(logn, gm, PRIMES[0].g, p, p0i);
-    for (u = 0; u < n; u ++) {
-        t1[u] = mp_montymul(R2, mp_set(*(int32_t *)&t1[u], p), p, p0i);
-    }
-    mp_NTT(logn, t1, gm, p, p0i);
-    for (u = 0; u < n; u ++) {
-        t2[u] = mp_set(f[u], p);
-        t3[u] = mp_set((int32_t)qp * F[u], p);
-    }
-    mp_NTT(logn, t2, gm, p, p0i);
-    mp_NTT(logn, t3, gm, p, p0i);
-    for (u = 0; u < n; u ++) {
-        t2[u] = mp_sub(t3[u], mp_montymul(t2[u], t1[u], p, p0i), p);
-    }
-    mp_mkigm(logn, igm, PRIMES[0].ig, p, p0i);
-    mp_iNTT(logn, t2, igm, p, p0i);
-    for (u = 0; u < n; u ++) {
-        int32_t x = mp_norm(t2[u], p);
-        Fdnorm += (uint64_t)((int64_t)x * (int64_t)x);
-    }
-    for (u = 0; u < n; u ++) {
-        t2[u] = mp_set(g[u], p);
-        t3[u] = mp_set((int32_t)qp * G[u], p);
-    }
-    mp_mkgm(logn, gm, PRIMES[0].g, p, p0i);
-    mp_NTT(logn, t2, gm, p, p0i);
-    mp_NTT(logn, t3, gm, p, p0i);
-    for (u = 0; u < n; u ++) {
-        t2[u] = mp_sub(t3[u], mp_montymul(t2[u], t1[u], p, p0i), p);
-    }
-    mp_mkigm(logn, igm, PRIMES[0].ig, p, p0i);
-    mp_iNTT(logn, t2, igm, p, p0i);
-    for (u = 0; u < n; u ++) {
-        int32_t x = mp_norm(t2[u], p);
-        Gdnorm += (uint64_t)((int64_t)x * (int64_t)x);
-    }
-    (void)Fdnorm; (void)Gdnorm;
-    mp_iNTT(logn, t1, igm, p, p0i);
-    for (u = 0; u < n; u ++) {
-        t1[u] = (uint32_t)mp_norm(t1[u], p);
     }
     return 1;
 }
@@ -278,23 +230,15 @@ int END_NS(crypto_kem_keypair_derand)(uint8_t *pk, uint8_t *sk, const uint8_t se
         } while (poly_baseinv257(t2, t1));
         poly_basemul257(t2, f_inv, t1);                                /* h = g f^-1 (NTT domain) */
         pk_encode(pk, t2);
-        KTRACE("keygen: f,g sampled (sum f=%d, sum g=%d)", (int)0, (int)0);
         /* solver convention: solve_NTRU(prof, logn, "f" := g, "g" := f) yields g*tF - f*tG = q */
-        {
-            int err = solve_NTRU(&SOLVE_END_PROFILE, END_LOGN, g, f, tt32);
-            KTRACE("keygen: solve_NTRU -> %d", err);
-            if (err != SOLVE_OK)
-                continue;
-        }
-        if (!compute_w(END_LOGN, f, g, tF, tG, tw)) {
-            KTRACE("keygen: compute_w failed");
+        if (solve_NTRU(&SOLVE_END_PROFILE, END_LOGN, g, f, tt32) != SOLVE_OK)
             continue;
-        }
-        KTRACE("keygen: compute_w ok");
+        if (!compute_w(END_LOGN, f, g, tF, tG, tw))
+            continue;
         memcpy(sk + END_SK_OFF_FF, tF, END_N);
         memcpy(sk + END_SK_OFF_GG, tG, END_N);
         for (i = 0; i < END_N; i++) {
-            int32_t wi = ((int32_t)tw[i]) / 20478;                     /* remove R = 2^32 mod p (exact) */
+            int32_t wi = (int32_t)tw[i];
             sk[END_SK_OFF_W + 2 * i] = (uint8_t)wi;
             sk[END_SK_OFF_W + 2 * i + 1] = (uint8_t)(wi >> 8);
         }

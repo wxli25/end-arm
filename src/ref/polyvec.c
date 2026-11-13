@@ -44,13 +44,6 @@ void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask)
         r[i] = (int16_t)((a[i] & mask) | (r[i] & (uint16_t)~mask));
 }
 
-void poly_cmov32(int32_t r[END_N], const int32_t a[END_N], uint32_t mask)
-{
-    unsigned i;
-    for (i = 0; i < END_N; i++)
-        r[i] = (int32_t)(((uint32_t)a[i] & mask) | ((uint32_t)r[i] & ~mask));
-}
-
 /*
  * Keep a sorted list (ascending score) of the m0 best entries; every input element is
  * inserted with a fixed chain of masked swaps, so the running time and the memory access

@@ -101,10 +101,9 @@ typedef struct END_ALIGN {
 ### 2.7 `end_keygen.c` —— 密钥生成
 
 - `ternary_sample(a, state)`：512 版从 SHAKE256 连续读取 384 字节，每个 6 位组映射为一个三元系数。1024 版沿用参考实现的 5 个 SHAKE256 块和位运算构造。
-- `compute_w(logn, f, g, F, G, tmp)`：参考实现原样（RNS NTT mod 31 位素数 + 32.32 定点 FFT 除法），输出 `w·20478` 于 `tmp[0..n)`；返回 0 表示溢出 → 拒绝密钥。
+- `compute_w(logn, f, g, F, G, tmp)`：取自参考实现（RNS NTT mod 31 位素数 + 32.32 定点 FFT 除法），输出 w（有符号 32 位整数）于 `tmp[0..n)`；参考实现末尾未使用的 Fd/Gd 范数计算已删除；返回 0 表示溢出 → 拒绝密钥。
 - `crypto_kem_keypair_derand(pk, sk, seed, tmp, tmplen)`：流程见 DESIGN §6 L4；`tmp` 需 ≥ `END_KEYGEN_TMPBYTES`。
 - `crypto_kem_keypair(pk, sk)`：`randombytes(seed)` + 上式；`END_STATIC_KEYGEN_TMP` 时 scratch 为静态。
-- 调试：`-DEND_KEYGEN_TRACE` 打印各阶段。
 
 ### 2.8 `end_kem.c` —— DPKE / PKE / KEM / 展开密钥
 
@@ -149,7 +148,7 @@ Thomas Pornin 的 ntrugen（经参考实现修改）：`ntru.c`（`solve_NTRU`�
 | `baseinv257.c` | `poly_baseinv257` | 范数下降求逆，`inv257` = a^255；返回非零表示不可逆 |
 | `ntt3329.c` | `poly_ntt3329/intt3329/basemul3329` | Montgomery 乘 twiddle（`_mont` 表）；基乘法 hi 先 `mont3329` 再 ×ζR²（`fqmul3329(ζ_mont, R2)`） |
 | `ntt12289.c` | `poly_ntt12289/intt12289/pointwise12289` | [0,q) 条件加减；逐点乘 = 两次 Montgomery（第二次乘 R²） |
-| `polyvec.c` | `poly_rot16/sqnorm16/cmov16/cmov32/fcl_select` | 旋转：log₂n 级桶形（两个临时数组）；FCL：有序表掩码插入 |
+| `polyvec.c` | `poly_rot16/sqnorm16/cmov16/fcl_select` | 旋转：log₂n 级桶形（两个临时数组）；FCL：有序表掩码插入 |
 
 ---
 

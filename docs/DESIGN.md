@@ -156,7 +156,7 @@ platform/cortex-m/  Makefile link.ld startup.c randombytes_m.c
 ### 5.2 KeyGen 侧的数值保证
 
 - `SOLVE_END_257_{512,1024}` profile：`coeff_FG_limit = 31` ⇒ ‖F‖∞, ‖G‖∞ ≤ 31（int8 存储有余量）。
-- `compute_w`：`lim1` 检查被除数、`fxr_lt(..., 30−logn)` 检查商、`lim2 = 8` 检查 |w/2^12| ≤ 8 ⇒ |w| ≤ 2^15。w·R(=20478) 的归一化用 `/20478`（恒整除）。
+- `compute_w`：`lim1` 检查被除数、`fxr_lt(..., 30−logn)` 检查商、`lim2 = 8` 检查 |w/2^12| ≤ 8 ⇒ |w| ≤ 2^15。参考实现随后计算并丢弃 ‖q′F − fw‖²、‖q′G − gw‖²，还把 w 转为 Montgomery 形式再用 `/20478` 还原；本实现省略这段死代码，w 直接取舍入结果，输出不变。
 - scratch：canary 实测（`test/test_keygen_tmp.c`）两种参数集均恰好使用 22·n 字节；`END_KEYGEN_TMPBYTES = 22n + 16`。
 
 ---
@@ -207,7 +207,7 @@ platform/cortex-m/  Makefile link.ld startup.c randombytes_m.c
 2. 循环：`ternary_sample(f)` 直到 NTT-257 域可逆；`ternary_sample(g)` 同；h = g·f⁻¹（NTT 域）；`pk_encode`；
 3. `solve_NTRU(prof, logn, g, f, tmp)`（参数顺序交换，得 g·F − f·G = q，输出 tmp 前 2n 字节为 G‖F）；失败则重采样；
 4. `compute_w`（原样移植，权重 `END_GAMMA2`）；失败则重采样；
-5. sk = k‖pk‖f‖g‖F‖G‖w（w 由 tw/20478 得到）。
+5. sk = k‖pk‖f‖g‖F‖G‖w。
 
 ### L5 FCL（`fcl_select` + `enumerate`）
 
@@ -252,10 +252,8 @@ return found  (0 ⇒ 解密失败，上层通过 FO 隐式拒绝)
 |---|---|
 | `END_N` | 512/1024 |
 | `END_M0_GF`, `END_M0_GF2` | FCL 输出规模（默认 2，允许 1–8，候选数组按两阶段的较大容量分配） |
-| `END_FULL_SCORE` | 预留：gf/GF 阶段加入 μ̄ 项（需 G、G_Q 的 NTT-3329 形式，`expkey` 已含字段） |
 | `END_STATIC_EXPKEY`, `END_STATIC_KEYGEN_TMP` | Cortex-M：用静态缓冲代替栈（19/38 KB 与 11/22 KB） |
 | `END_RANDOMBYTES_EXTERNAL` | 裸机：平台提供 `randombytes` |
-| `END_KEYGEN_TRACE` | 调试：KeyGen 过程打印 |
 
 ---
 
@@ -361,10 +359,10 @@ sequenceDiagram
 |---|---|---|---|
 | DR-01 | §6-1 | f, g 采样采用三元分布（512：6 bit → k<9 为 −1，k>54 为 +1；1024：位与/位差构造 P(±1)=3/32） | 两套参数沿用映射规则，END-512 的 XOF 读取规则见 DR-13 |
 | DR-02 | §6-2 | 求解器 ntrugen + profile；调用顺序 `(g, f)` 得 gF − fG = q；输出 G 在前 F 在后；需 22n 字节 scratch | 原样移植；scratch 用量 canary 实测 |
-| DR-03 | §6-3 | w 权重 6/3（论文 4/3）；w 用 31 位素数 NTT + 32.32 定点 FFT；`/20478` 去 Montgomery 因子；|w|=32768 边界不可表示（概率可忽略，保持与参考一致） | 按参考实现 |
+| DR-03 | §6-3 | w 权重 6/3（论文 4/3）；w 用 31 位素数 NTT + 32.32 定点 FFT；参考实现中未使用的 Fd/Gd 范数计算已省略（w 不变）；|w|=32768 边界不可表示（概率可忽略，保持与参考一致） | 按参考实现 |
 | DR-04 | V4 | 参考 512 版 CRT 恒取偶代表元、1024 版只看 Σw 奇偶，正确性依赖 Σf、Σg 恒为奇（`zint_bezout`） | 本实现存 `pwc1 = p₁·(Σw&1)`，对任意密钥正确；KAT 一致 |
 | DR-05 | §6-5 | 参考用 mod 769 NTT 求 s̄′（范围 ±384，r·f 甚至用 mod 257 → 候选修正可能出错） | 改用 mod 3329（范围 ±1664，s̄′ ≤ 129、r·f ≤ 864 均精确）；与 257 共用 7 层结构 |
-| DR-06 | §6-6/7 | 打分只用 s 项（参考）；m₀ = 2（参考 top-2） | 默认 s-only；`END_FULL_SCORE` 预留；m₀ 编译期可调 |
+| DR-06 | §6-6/7 | 打分只用 s 项（参考）；m₀ = 2（参考 top-2） | 仅用 s 项打分（加入 μ̄ 项需另行实现）；m₀ 编译期可调 |
 | DR-07 | §7-S1 | 参考 gf 阶段 FCL 用 `128 − |c1|` 并按绝对值排序（`pke.c:298`），c₁ 已在 mod 514 域，边界应为 257 | 本实现用 257；golden 用例 "S1" 证明参考边界选不到 wrap 位置 |
 | DR-08 | §7-S2/S6 | 参考候选修正 `sp − rf − ẽF`、GF 阶段 `−sp ± f·x^idx`，符号与 V2/V5 相反；且贪心累积更新 | 本实现 s̄″ = s̄′ + 2ẽF + 2rf、s̄ = s̄″ − 2ẽ_GF f，固定族 + 常数时间 argmin；golden "S6"/"V2" 用例 |
 | DR-09 | §6-9 | END-1024 GF 阶段论文 (1,1)，参考 2 重候选 | 取 (2,1)（超集，无害） |
@@ -406,7 +404,7 @@ sequenceDiagram
 1. NEON：层合并（3+3+1 / 4+3）、寄存器驻留、`.S` 版本；Keccak FEAT_SHA3；`decode_trap` 中标量循环向量化；`rot16` 寄存器内实现。
 2. Cortex-M：手写 Thumb-2 NTT（层合并 + FPU 寄存器溢出区）、XKCP Keccak、`decode_trap` 栈用量压缩（当前 ~20 KB/40 KB）。
 3. pqm4 集成与真机测量（NUCLEO-L4R5ZI）；Cortex-A 真机 PMU 测量。
-4. `END_FULL_SCORE`（μ̄ 项）实现；`END_PROFILE_CLEAN`（域分离）。
+4. 打分加入 μ̄ 项（参考论文 Alg.4）；`END_PROFILE_CLEAN`（域分离）。
 5. 掩码/乱序接口（功耗侧信道）。
 
 ## 14. 风险与待确认问题

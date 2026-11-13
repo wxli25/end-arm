@@ -26,17 +26,11 @@ static inline uint64_t ct_lt_u64(uint64_t a, uint64_t b)
 {
     return (a ^ ((a ^ b) | ((a - b) ^ b))) >> 63;
 }
-static inline uint32_t ct_eq_u32(uint32_t a, uint32_t b)   /* 1 if a == b */
-{
-    uint32_t x = a ^ b;
-    return 1u ^ ((x | (0u - x)) >> 31);
-}
 static inline uint32_t ct_is_zero_u32(uint32_t x) { return 1u ^ ((x | (0u - x)) >> 31); }
 static inline int32_t ct_sel_i32(int32_t a, int32_t b, uint32_t mask) /* mask ? a : b (mask all-ones or 0) */
 {
     return (int32_t)(((uint32_t)a & mask) | ((uint32_t)b & ~mask));
 }
-static inline int16_t wrap16(int32_t x) { return (int16_t)(uint16_t)((uint32_t)x); }
 
 /* ---- generic Montgomery reduction, R = 2^16 ---------------------------- */
 static inline int16_t mont_reduce16(int32_t a, int32_t p, uint16_t pinv_neg)

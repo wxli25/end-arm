@@ -5,7 +5,8 @@
 #   Cortex-M: platform/cortex-m/build/<backend>-<N>-cortex-m4/bench.elf
 set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
-OUT=${1:-docs/icount_results.txt}
+OUT=${1:-build/icount_results.txt}
+mkdir -p "$(dirname "$OUT")"
 results=$(mktemp "${OUT}.XXXXXX")
 trap 'rm -f -- "$results"' EXIT
 for n in 512 1024; do

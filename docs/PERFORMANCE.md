@@ -98,7 +98,7 @@
 | Cortex-M4 镜像 bench.elf（含 newlib-nano/半主机/测试代码） | text 89 KB（ref）/ 95 KB（DSP），bss 65 KB | text 98 KB / 100 KB，bss 112 KB |
 | Cortex-M4 栈峰值（涂色法，bench 全部操作含 KeyGen） | 26 052 B（ref）/ 26 080 B（DSP） | 51 764 B / 51 768 B |
 
-bss 中包含静态展开密钥（19/38 KB）、静态 KeyGen scratch（11/22 KB）与基准程序的静态缓冲；库本身的 .data 可忽略。栈峰值主要来自 `decode_trap`（≈20/40 KB）加 KEM/PKE 层的缓冲，后续可通过复用缓冲区压缩（DESIGN §13）。原始输出见 `docs/stack_results.txt`。
+bss 中包含静态展开密钥（19/38 KB）、静态 KeyGen scratch（11/22 KB）与基准程序的静态缓冲；库本身的 .data 可忽略。栈峰值主要来自 `decode_trap`（≈20/40 KB）加 KEM/PKE 层的缓冲，后续可通过复用缓冲区压缩（DESIGN §13）。复现命令：`bash scripts/m_stack.sh`。
 
 ## 6. pqm4 框架下与 ML-KEM 的对比（2026-11-12）
 
@@ -108,13 +108,13 @@ END 已接入 pqm4（见 `pqm4/README.md`），以下数据都用 pqm4 自己的
 
 | 方案 / 实现 | KeyGen | Encaps | Decaps |
 |---|---:|---:|---:|
-| END-512 m4（DSP） | 28 496 835 | 241 173 | 2 727 488 |
+| END-512 m4（DSP） | 27 954 153 | 241 173 | 2 727 488 |
 | END-512 ref | 28 523 996 | 266 039 | 3 591 739 |
 | ML-KEM-512 m4fspeed | 353 341 | 350 139 | 376 445 |
 | ML-KEM-512 m4fstack | 353 830 | 352 041 | 378 729 |
 | ML-KEM-512 clean | 484 775 | 566 409 | 696 340 |
 | ML-KEM-768 m4fspeed | 569 590 | 583 332 | 619 022 |
-| END-1024 m4（DSP） | 129 915 638 | 490 789 | 6 008 730 |
+| END-1024 m4（DSP） | 128 739 670 | 490 789 | 6 008 730 |
 | END-1024 ref | 130 180 098 | 538 570 | 7 745 877 |
 | ML-KEM-1024 m4fspeed | 900 011 | 909 698 | 956 512 |
 | ML-KEM-1024 clean | 1 238 928 | 1 378 798 | 1 593 997 |
@@ -145,7 +145,7 @@ END 已接入 pqm4（见 `pqm4/README.md`），以下数据都用 pqm4 自己的
 # 主机周期数
 make END_N=512 BACKEND=ref CC=gcc CFLAGS="-O3 -march=native" ARCH=hostO3 build/hostO3-ref-512/bench && ./build/hostO3-ref-512/bench 300
 # 动态指令数（需 --enable-plugins 的 QEMU，见下）
-bash scripts/icount_all.sh docs/icount_results.txt
+bash scripts/icount_all.sh build/icount_results.txt
 # Cortex-M4 栈峰值与尺寸
 bash scripts/m_stack.sh
 ```

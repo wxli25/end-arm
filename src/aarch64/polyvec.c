@@ -70,14 +70,6 @@ void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask)
         vst1q_s16(r + i, vbslq_s16(m, vld1q_s16(a + i), vld1q_s16(r + i)));
 }
 
-void poly_cmov32(int32_t r[END_N], const int32_t a[END_N], uint32_t mask)
-{
-    uint32x4_t m = vdupq_n_u32(mask);
-    unsigned i;
-    for (i = 0; i < END_N; i += 4)
-        vst1q_s32(r + i, vbslq_s32(m, vld1q_s32(a + i), vld1q_s32(r + i)));
-}
-
 void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N])
 {
     uint32_t best[END_FCL_MAX], bidx[END_FCL_MAX];

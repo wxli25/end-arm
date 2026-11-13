@@ -70,15 +70,6 @@ void expkey_from_parts(end_expkey *ek, const uint8_t k[END_MSGBYTES], const int1
     for (i = 0; i < END_N; i++)
         ek->FQn3329[i] = red3329_32((int32_t)(END_QP % END_P3) * F[i] - t2[i]);   /* int32: 2302*31 overflows int16 */
     poly_ntt3329(ek->FQn3329);
-#ifdef END_FULL_SCORE
-    for (i = 0; i < END_N; i++) { ek->g16[i] = g[i]; ek->G16[i] = G[i]; ek->gn3329[i] = g[i]; }
-    poly_ntt3329(ek->gn3329);
-    poly_basemul3329(t2, t1, ek->gn3329);
-    poly_intt3329(t2);
-    for (i = 0; i < END_N; i++)
-        ek->GQn3329[i] = red3329_32((int32_t)(END_QP % END_P3) * G[i] - t2[i]);
-    poly_ntt3329(ek->GQn3329);
-#endif
 }
 
 int END_NS(expkey_from_sk)(end_expkey *ek, const uint8_t *sk)

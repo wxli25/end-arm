@@ -41,12 +41,6 @@ typedef struct END_ALIGN {
     int16_t wn12289[END_N];        /* NTT12289(w)                                               */
     int16_t fn3329[END_N];         /* NTT3329(f)                                                */
     int16_t FQn3329[END_N];        /* NTT3329(F_Q), F_Q = Q F - w f                             */
-#ifdef END_FULL_SCORE
-    int16_t gn3329[END_N];         /* NTT3329(g)                                                */
-    int16_t GQn3329[END_N];        /* NTT3329(G_Q), G_Q = Q G - w g                             */
-    int16_t G16[END_N];
-    int16_t g16[END_N];
-#endif
     uint16_t p1;                   /* parity of every coefficient of c1 = g s~ + f mu~          */
     uint16_t p2;                   /* parity of every coefficient of G s~ + F mu~               */
     uint16_t pwc1;                 /* parity of every coefficient of w*c1  (= p1 & parity(sum w))*/

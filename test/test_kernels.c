@@ -172,15 +172,29 @@ static void test_vec(void)
         uint64_t s = 0;
         for (i = 0; i < END_N; i++) s += (uint64_t)((int32_t)a[i] * a[i]);
         CHECK(poly_sqnorm16(a) == s, "sqnorm16");
-        for (i = 0; i < END_N; i++) sc[i] = rnd() % 64;
-        uint32_t idx[4];
-        fcl_select(idx, 2, sc);
-        /* naive: sort by (score, index) */
-        unsigned best0 = 0, best1 = 0;
-        for (i = 1; i < END_N; i++) if (sc[i] < sc[best0]) best0 = i;
-        best1 = (best0 == 0) ? 1 : 0;
-        for (i = 0; i < END_N; i++) if (i != best0 && sc[i] < sc[best1]) best1 = i;
-        CHECK(idx[0] == best0 && idx[1] == best1, "fcl_select: got (%u,%u) want (%u,%u)", (unsigned)idx[0], (unsigned)idx[1], best0, best1);
+        /* FCL: scores with many ties (range 0..1023 over END_N entries); iteration 0 is the crafted case
+         * "two tied second-best entries arrive before a unique minimum", which a score-only insertion
+         * gets wrong (it keeps index 1 instead of index 0) */
+        for (i = 0; i < END_N; i++) sc[i] = rnd() % 1024;
+        if (it == 0) { for (i = 0; i < END_N; i++) sc[i] = 100; sc[0] = 5; sc[1] = 5; sc[2] = 3; }
+        {
+            unsigned m0, j;
+            uint32_t idx[END_FCL_MAX], want[END_FCL_MAX];
+            for (m0 = 1; m0 <= END_FCL_MAX; m0++) {
+                fcl_select(idx, m0, sc);
+                /* naive: repeatedly take the smallest (score, index) not taken yet */
+                for (j = 0; j < m0; j++) {
+                    unsigned b = END_N, t;
+                    for (i = 0; i < END_N; i++) {
+                        unsigned taken = 0;
+                        for (t = 0; t < j; t++) taken |= (want[t] == i);
+                        if (!taken && (b == END_N || sc[i] < sc[b])) b = i;
+                    }
+                    want[j] = b;
+                    CHECK(idx[j] == b, "fcl_select m0=%u pos %u: got %u want %u", m0, j, (unsigned)idx[j], b);
+                }
+            }
+        }
     }
     printf("vec: done (%d failures so far)\n", fails);
 }

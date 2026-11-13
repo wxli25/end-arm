@@ -62,11 +62,12 @@ void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N])
 {
     uint32_t best[END_FCL_MAX], bidx[END_FCL_MAX];
     unsigned i, j;
-    for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0; }
+    for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0xFFFFFFFFu; }
     for (i = 0; i < END_N; i++) {
         uint32_t cs = scores[i], ci = i;
         for (j = 0; j < m0; j++) {
-            uint32_t lt = ct_mask_lt_u32(cs, best[j]);
+            /* lexicographic (score, index): ties resolve towards the smaller index (see src/ref/polyvec.c) */
+            uint32_t lt = ct_mask_lt_u32(cs, best[j]) | (ct_mask_eq_u32(cs, best[j]) & ct_mask_lt_u32(ci, bidx[j]));
             uint32_t ns = (best[j] & lt) | (cs & ~lt);
             uint32_t ni = (bidx[j] & lt) | (ci & ~lt);
             best[j] = (cs & lt) | (best[j] & ~lt);

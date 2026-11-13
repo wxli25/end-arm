@@ -27,6 +27,7 @@ static inline uint64_t ct_lt_u64(uint64_t a, uint64_t b)
     return (a ^ ((a ^ b) | ((a - b) ^ b))) >> 63;
 }
 static inline uint32_t ct_is_zero_u32(uint32_t x) { return 1u ^ ((x | (0u - x)) >> 31); }
+static inline uint32_t ct_mask_eq_u32(uint32_t a, uint32_t b) { return 0u - ct_is_zero_u32(a ^ b); }
 static inline int32_t ct_sel_i32(int32_t a, int32_t b, uint32_t mask) /* mask ? a : b (mask all-ones or 0) */
 {
     return (int32_t)(((uint32_t)a & mask) | ((uint32_t)b & ~mask));
@@ -73,7 +74,7 @@ static inline int16_t fqmul3329(int16_t a, int16_t b) { return mont3329((int32_t
 static inline int16_t red3329_32(int32_t a)          /* |a| < 2^27 -> [0, 3329) */
 {
     /* Barrett with M = ceil(2^39 / 3329): quotient error at most 1 in either direction */
-    const int64_t M = 165140983; /* ceil(2^39/3329) */
+    const int64_t M = 165141429; /* ceil(2^39/3329) */
     int32_t q = (int32_t)(((int64_t)a * M) >> 39);
     int32_t r = a - q * END_P3;              /* in (-3329, 2*3329) */
     r += (r >> 31) & END_P3;
@@ -100,7 +101,7 @@ static inline int16_t fqmul12289(int16_t a, int16_t b) { return mont12289((int32
 /* round((v)/(2qQ)) with ties towards +inf, for |v| < 2^27, constant time (Barrett, M = ceil(2^50/2qQ)) */
 static inline int32_t round_div_2qqp(int32_t v)
 {
-    const int64_t M = 178198389; /* ceil(2^50 / 6316546) */
+    const int64_t M = 178246135; /* ceil(2^50 / 6316546) */
     int64_t x = (int64_t)v + END_QQP + (int64_t)8 * END_2QQP;   /* positive */
     int32_t q = (int32_t)((x * M) >> 50);
     int32_t r = (int32_t)(x - (int64_t)q * END_2QQP);

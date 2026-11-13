@@ -10,6 +10,12 @@ platform/cortex-m/build/
 # python
 __pycache__/
 *.pyc
-# editors
+# editors / tools
 .vscode/
+.idea/
 *.swp
+.claude/
+# logs and OS files
+*.log
+.DS_Store
+Thumbs.db

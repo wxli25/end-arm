@@ -45,19 +45,21 @@ void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask)
 }
 
 /*
- * Keep a sorted list (ascending score) of the m0 best entries; every input element is
+ * Keep a list sorted by (score, index) of the m0 best entries; every input element is
  * inserted with a fixed chain of masked swaps, so the running time and the memory access
- * pattern are independent of the scores.  Ties resolve towards the smaller index.
+ * pattern are independent of the scores.  The comparison is lexicographic on (score, index):
+ * a score-only comparison would drop an element displaced from position j when it ties with
+ * position j+1, although it has the smaller index.  Ties resolve towards the smaller index.
  */
 void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N])
 {
     uint32_t best[END_FCL_MAX], bidx[END_FCL_MAX];
     unsigned i, j;
-    for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0; }
+    for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0xFFFFFFFFu; }
     for (i = 0; i < END_N; i++) {
         uint32_t cs = scores[i], ci = i;
         for (j = 0; j < m0; j++) {
-            uint32_t lt = ct_mask_lt_u32(cs, best[j]);
+            uint32_t lt = ct_mask_lt_u32(cs, best[j]) | (ct_mask_eq_u32(cs, best[j]) & ct_mask_lt_u32(ci, bidx[j]));
             uint32_t ns = (best[j] & lt) | (cs & ~lt);
             uint32_t ni = (bidx[j] & lt) | (ci & ~lt);
             best[j] = (cs & lt) | (best[j] & ~lt);

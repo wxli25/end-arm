@@ -1,21 +1,79 @@
-# build outputs
+# The repository holds sources only. Everything below stays on the local machine.
+
+# ---- generated sources (scripts/gen_tables.py, run by the first build) ----
+src/common/end_tables.h
+
+# ---- test vectors and measurement data -------------------------------
+/kat/
+docs/*.csv
+*_results*.txt
+*.log
+
+# ---- local helpers ---------------------------------------------------
+scripts/wsl_make.sh
+test/test_keygen_tmp.c
+
+# ---- build outputs ---------------------------------------------------
 build/
 platform/cortex-m/build/
 *.o
+*.obj
 *.d
 *.a
+*.lib
+*.so
+*.dll
+*.dylib
 *.elf
 *.map
 *.exe
-# python
+*.out
+*.bin
+*.hex
+*.lst
+*.su
+# Do not add *.i or *.s here: assembly sources are named *.S and *.i,
+# and on a case-insensitive checkout (Windows) "*.s" also matches "*.S".
+
+# ---- debugging and profiling -----------------------------------------
+vgcore.*
+core.[0-9]*
+callgrind.out.*
+massif.out.*
+perf.data*
+*.gcda
+*.gcno
+*.gcov
+*.stackdump
+
+# ---- python ----------------------------------------------------------
 __pycache__/
-*.pyc
-# editors / tools
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ---- editors and tools -----------------------------------------------
 .vscode/
 .idea/
+.cache/
+compile_commands.json
 *.swp
+*.swo
+*~
 .claude/
-# logs and OS files
-*.log
+CLAUDE.local.md
+
+# ---- patch and merge leftovers ---------------------------------------
+*.orig
+*.rej
+*.bak
+*.tmp
+
+# ---- local checkouts of other projects (reference code, pqm4, kyber) --
+/third_party/
+
+# ---- OS files --------------------------------------------------------
 .DS_Store
 Thumbs.db
+desktop.ini

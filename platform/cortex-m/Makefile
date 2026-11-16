@@ -64,7 +64,12 @@ ELFS  := $(addprefix $(BUILD)/,$(addsuffix .elf,$(TESTS)))
 all: $(ELFS)
 	$(SIZE) $(ELFS)
 
-$(BUILD)/%.o: $(ROOT)/%.c
+# constant tables: generated, not stored in the repository (the rule is in the top-level Makefile)
+TABLES := $(ROOT)/src/common/end_tables.h
+$(TABLES): $(ROOT)/scripts/gen_tables.py
+	$(MAKE) -C $(ROOT) tables
+
+$(BUILD)/%.o: $(ROOT)/%.c | $(TABLES)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 

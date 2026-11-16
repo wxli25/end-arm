@@ -28,9 +28,9 @@ end-arm/
 ├── src/armv7em/              Cortex-M4/M33 DSP 内核
 ├── platform/cortex-m/        裸机：Makefile、link.ld、startup.c、randombytes_m.c
 ├── golden/                   Python golden model、wrap 注入测试（可导出 C 测试用例）
-├── test/                     C 测试：内核自检、KAT、往返、wrap 注入、KeyGen scratch 测量
+├── test/                     C 测试：内核自检、KAT、往返、wrap 注入
 ├── bench/                    基准程序与计时器
-├── kat/                      参考实现 KAT（100 × END-512，60 × END-1024）与 wrap 实例
+├── kat/                      测试向量：参考实现 KAT（100 × END-512，60 × END-1024）与 wrap 实例；不入库，见 README
 ├── scripts/                  表生成、WSL/QEMU 辅助脚本、指令计数
 └── docs/                     文档
 ```
@@ -83,7 +83,7 @@ typedef struct END_ALIGN {
 
 ### 2.5 `end_tables.h`（生成文件）
 
-由 `scripts/gen_tables.py` 生成：`end_zetas257[128]`、`end_zetas257_inv[128]`（及 `_mont` 形式）、`end_zetas3329*`、`end_zetas12289_{512,1024}`、`end_zetas12289_inv_*`（GS 消费顺序）、`END_INV128_*`、`END_NINV_MONT12289_*`、`END_MONT_R2_*`、`END_QINV16_*`、`END_INV257_MOD12289`、`END_INV257_MONT_MOD12289`、`END_INV_QQP_MONT_MOD3329`。
+由 `scripts/gen_tables.py` 在首次构建时生成（`make tables`），不入库：`end_zetas257[128]`、`end_zetas257_inv[128]`（及 `_mont` 形式）、`end_zetas3329*`、`end_zetas12289_{512,1024}`、`end_zetas12289_inv_*`（GS 消费顺序）、`END_INV128_*`、`END_NINV_MONT12289_*`、`END_MONT_R2_*`、`END_QINV16_*`、`END_INV257_MOD12289`、`END_INV257_MONT_MOD12289`、`END_INV_QQP_MONT_MOD3329`。
 
 ### 2.6 `end_codec.c` —— 编解码
 
@@ -198,11 +198,9 @@ NEON 中所有数据排列与 ref 相同（`test_kernels` 的 NTT-257 指纹 `93
 | `test/test_kat.c` | KAT 回放：keypair_derand/enc_derand/dec/dec_exp 逐位比对 | `make test_kat` |
 | `test/test_roundtrip.c` | 随机往返 + 篡改密文的隐式拒绝（K = H(k‖ct′)） | `make test_roundtrip` |
 | `test/test_wraps.c` | 回放 golden 导出的 wrap 实例 | `make test_wraps` |
-| `test/test_keygen_tmp.c` | KeyGen scratch 用量 canary | 手动编译 |
 | `bench/bench.c` | 各操作与内核的中位数周期/时间；`--insn <op>` 单次模式供 QEMU 插件计数 | `make bench` |
 | `bench/cycles.[ch]` | 平台计时器 | |
 | `scripts/gen_tables.py` | 生成 `end_tables.h` | |
-| `scripts/wsl_make.sh` | Windows → WSL 调用 make | |
 | `scripts/qemu_m_tests.sh` / `qemu_m_run.sh` / `m_stack.sh` | QEMU 上运行 Cortex-M 测试/单个镜像/栈用量 | |
 | `scripts/qemu_icount.sh` / `icount_all.sh` | 插件版 QEMU 的动态指令数统计 | |
 

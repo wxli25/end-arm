@@ -11,13 +11,20 @@ run() {
     bash scripts/qemu_m_run.sh "$B/$name.elf" "$CPU" "$MACH" "$name" "$@" |
         sed '/^[[:space:]]*\[PASS\]/d'
 }
+# The test vectors (kat/) are not stored in the repository: a replay whose vector file is absent is skipped.
+have() {
+    local f
+    for f in "$@"; do
+        [[ -f "$f" ]] || { echo "=== END-$N $BK $CPU: SKIPPED, $f not found ==="; return 1; }
+    done
+}
 kat="kat/kat_end${N}_ref.txt"
 run test_kernels
 if [[ "$N" == 512 ]]; then
-    run test_kat kat/kat_end512_shake256.txt "${KAT_MAX:-100}"
-    run test_kat "$kat" "${KAT_MAX:-100}" --import
+    if have kat/kat_end512_shake256.txt; then run test_kat kat/kat_end512_shake256.txt "${KAT_MAX:-100}"; fi
+    if have "$kat"; then run test_kat "$kat" "${KAT_MAX:-100}" --import; fi
 else
-    run test_kat "$kat" "${KAT_MAX:-60}"
+    if have "$kat"; then run test_kat "$kat" "${KAT_MAX:-60}"; fi
 fi
 run test_roundtrip "${RT_N:-10}"
-run test_wraps "$kat" "kat/wraps_end${N}.txt"
+if have "$kat" "kat/wraps_end${N}.txt"; then run test_wraps "$kat" "kat/wraps_end${N}.txt"; fi

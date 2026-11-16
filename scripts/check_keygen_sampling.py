@@ -77,6 +77,8 @@ def equal_coefficients(poly):
 
 def read_kat(name):
     path = ROOT / "kat" / name
+    if not path.exists():
+        sys.exit(f"{path} not found: this check needs the END-512 test vectors, which are not part of the repository")
     entries = {}
     for block in path.read_text(encoding="ascii").strip().split("\n\n"):
         fields = dict(line.split(" = ", 1) for line in block.splitlines())

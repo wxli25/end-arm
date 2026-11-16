@@ -12,10 +12,10 @@
 | `src/armv7em/` | Cortex-M4/M33：ARMv7E-M DSP（打包 16 位 SIMD + SMULxx Montgomery）内核 |
 | `platform/cortex-m/` | 裸机启动代码、链接脚本、半主机、QEMU 运行脚本 |
 | `golden/` | Python 精确算术 golden model（可执行规范）与 wrap 注入测试 |
-| `test/`, `bench/`, `kat/` | 测试程序、基准程序、参考实现 KAT |
+| `test/`, `bench/` | 测试程序、基准程序 |
 | `docs/` | 设计文档、代码阅读文档、测试报告、性能报告 |
 
-END-512 的 KeyGen 使用连续 SHAKE256 流，确定性回归使用 `kat/kat_end512_shake256.txt`。原 END-512 向量继续验证已有密钥的封装和解封装。END-1024 仍使用参考实现 `dde0a77` 的 KeyGen、封装和解封装向量。详见 [测试报告](docs/TEST_REPORT.md)。
+END-512 的 KeyGen 使用连续 SHAKE256 流，密钥因此与参考实现不同；封装和解封装仍用参考实现的向量在已有密钥上验证。END-1024 复现参考实现 `dde0a77` 的 KeyGen、封装和解封装向量。详见 [测试报告](docs/TEST_REPORT.md)。
 
 ## 快速开始
 
@@ -34,12 +34,17 @@ make END_N=512 BACKEND=aarch64 ARCH=aarch64 CC=aarch64-linux-gnu-gcc CFLAGS=-O3 
 cd platform/cortex-m && make END_N=512 BACKEND=armv7em all && cd ../..
 bash scripts/qemu_m_tests.sh 512 armv7em
 
-# 4. golden model
+# 4. golden model（需要测试向量，见下文）
 python3 golden/end_golden.py kat/kat_end512_shake256.txt --n 512 --max 100
 python3 golden/test_wraps.py
 ```
 
-Windows 下可通过 `MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 -- bash scripts/wsl_make.sh 512 ref CC=gcc test_all` 调用（见 `scripts/`）。
+Windows 下在 WSL 里执行这些命令。
+
+仓库只存放源码：
+
+- `src/common/end_tables.h`（twiddle 等常数表）在首次构建时由 `scripts/gen_tables.py` 生成。
+- 测试向量不随仓库发布。`test_kat`、`test_wraps` 和 golden model 的命令从 `kat/` 读取向量；某个向量文件不存在时，`make test_all` 和 `scripts/qemu_m_tests.sh` 跳过需要它的回放并给出提示。向量文件有三类：`kat_end{512,1024}_ref.txt`（由参考实现 `dde0a77` 生成）、`kat_end512_shake256.txt`（`test_kat kat/kat_end512_ref.txt 100 --generate`）、`wraps_end{512,1024}.txt`（`python3 golden/test_wraps.py --dump`）。
 
 ## API（`src/common/end_api.h`）
 

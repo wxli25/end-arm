@@ -1,5 +1,7 @@
 # END KEM ARM 实现 · 测试验收报告
 
+> 仓库只存放源码。本报告用到的测试向量（`kat/` 下的 KAT 与 wrap 实例）和 KeyGen scratch 测量程序不随仓库发布，向量的来源见 README。向量文件不存在时，`make test_all` 与 `scripts/qemu_m_tests.sh` 跳过对应的回放测试。
+
 ## 2026-11-12 接入 pqm4
 
 - 新增 `pqm4/`：导出脚本、胶水代码、指令数 harness。KeyGen 的 SHAKE256 改经 `src/common/end_xof.h` 适配，pqm4 构建使用 pqm4 的 Keccak 汇编，本仓库构建仍用自带 `fips202.c`，输出逐字节相同。
@@ -78,7 +80,7 @@ FCL 的前提是 wrap 坐标的未约简值只略超边界：实验中把 GF 目
 
 ### 2.3 KeyGen scratch
 
-`test/test_keygen_tmp.c` 以 0xA5 涂色 64·n 字节后运行 keypair_derand：两种参数集、含基准种子在内的 12 个种子均恰好触及 22·n 字节（`END_KEYGEN_TMPBYTES = 22n + 16`）。
+测量程序以 0xA5 涂色 64·n 字节后运行 keypair_derand：两种参数集、含基准种子在内的 12 个种子均恰好触及 22·n 字节（`END_KEYGEN_TMPBYTES = 22n + 16`）。
 
 ## 3. 构建警告与已知事项
 

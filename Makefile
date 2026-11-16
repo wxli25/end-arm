@@ -18,6 +18,9 @@ CPPFLAGS  = -DEND_N=$(END_N) -DEND_BACKEND_NAME=\"$(BACKEND)\" -Isrc/common -Isr
 LDFLAGS  ?=
 LDLIBS   ?=
 RUN      ?=
+PYTHON   ?= python3
+# constant tables: generated on the first build (rule below), not stored in the repository
+TABLES   := src/common/end_tables.h
 
 BUILD    := build/$(ARCH)-$(BACKEND)-$(END_N)
 
@@ -34,7 +37,7 @@ KERNEL_OBJS  := $(patsubst %.c,$(BUILD)/%.o,$(KERNEL_SRCS)) $(patsubst %.S,$(BUI
 
 DEPFLAGS = -MMD -MP
 
-$(BUILD)/%.o: %.c
+$(BUILD)/%.o: %.c | $(TABLES)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) $(DEPFLAGS) -c $< -o $@
 
@@ -46,6 +49,11 @@ $(BUILD)/libend.a: $(LIB_OBJS)
 	$(AR) rcs $@ $^
 
 lib: $(BUILD)/libend.a
+
+$(TABLES): scripts/gen_tables.py
+	$(PYTHON) scripts/gen_tables.py $(TABLES)
+
+tables: $(TABLES)
 
 $(BUILD)/test_kernels: test/test_kernels.c $(KERNEL_OBJS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) $^ -o $@ $(LDFLAGS) $(LDLIBS)
@@ -68,17 +76,36 @@ $(BUILD)/bench: bench/bench.c bench/cycles.c $(BUILD)/libend.a
 test_kernels: $(BUILD)/test_kernels
 	$(RUN) $(BUILD)/test_kernels
 
+# The test vectors (kat/) are not stored in the repository, see README. test_kat and test_wraps are
+# always built; a replay whose vector file is absent is skipped with a message.
+KAT_REF    := kat/kat_end$(END_N)_ref.txt
+KAT_KEYGEN := $(if $(filter 512,$(END_N)),kat/kat_end512_shake256.txt,$(KAT_REF))
+KAT_WRAPS  := kat/wraps_end$(END_N).txt
+no_vectors  = @echo "$@: SKIPPED, $(1) not found (the test vectors are not part of the repository)"
+
 test_kat: $(BUILD)/test_kat
+ifneq ($(wildcard $(KAT_KEYGEN)),)
 	$(RUN) $(BUILD)/test_kat
+else
+	$(call no_vectors,$(KAT_KEYGEN))
+endif
 ifeq ($(END_N),512)
-	$(RUN) $(BUILD)/test_kat kat/kat_end512_ref.txt 100 --import
+ifneq ($(wildcard $(KAT_REF)),)
+	$(RUN) $(BUILD)/test_kat $(KAT_REF) 100 --import
+else
+	$(call no_vectors,$(KAT_REF))
+endif
 endif
 
 test_roundtrip: $(BUILD)/test_roundtrip
 	$(RUN) $(BUILD)/test_roundtrip
 
 test_wraps: $(BUILD)/test_wraps
-	$(RUN) $(BUILD)/test_wraps kat/kat_end$(END_N)_ref.txt
+ifeq ($(wildcard $(KAT_REF) $(KAT_WRAPS)),$(KAT_REF) $(KAT_WRAPS))
+	$(RUN) $(BUILD)/test_wraps $(KAT_REF)
+else
+	$(call no_vectors,$(KAT_REF) or $(KAT_WRAPS))
+endif
 
 test_entropy: $(BUILD)/test_entropy
 	$(RUN) $(BUILD)/test_entropy
@@ -93,4 +120,4 @@ clean:
 
 -include $(wildcard $(BUILD)/src/*/*.d $(BUILD)/src/*/*/*.d)
 
-.PHONY: lib test_kernels test_kat test_roundtrip test_wraps test_entropy test_all bench clean
+.PHONY: lib tables test_kernels test_kat test_roundtrip test_wraps test_entropy test_all bench clean

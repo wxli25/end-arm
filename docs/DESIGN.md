@@ -157,7 +157,7 @@ platform/cortex-m/  Makefile link.ld startup.c randombytes_m.c
 
 - `SOLVE_END_257_{512,1024}` profile：`coeff_FG_limit = 31` ⇒ ‖F‖∞, ‖G‖∞ ≤ 31（int8 存储有余量）。
 - `compute_w`：`lim1` 检查被除数、`fxr_lt(..., 30−logn)` 检查商、`lim2 = 8` 检查 |w/2^12| ≤ 8 ⇒ |w| ≤ 2^15。参考实现随后计算并丢弃 ‖q′F − fw‖²、‖q′G − gw‖²，还把 w 转为 Montgomery 形式再用 `/20478` 还原；本实现省略这段死代码，w 直接取舍入结果，输出不变。
-- scratch：canary 实测（`test/test_keygen_tmp.c`）两种参数集均恰好使用 22·n 字节；`END_KEYGEN_TMPBYTES = 22n + 16`。
+- scratch：canary 实测（测量程序不随仓库发布）两种参数集均恰好使用 22·n 字节；`END_KEYGEN_TMPBYTES = 22n + 16`。
 
 ---
 
@@ -369,7 +369,7 @@ sequenceDiagram
 | DR-10 | 哈希无域分离；512 用 SHA3-256、1024 用 SHA3-512；K = SHA3-256(m‖ct) | 默认剖面照用；`END_PROFILE_CLEAN` 未实现（会破坏 KAT） |
 | DR-11 | 参考 END-1024 `poly_norm2` 返回 int16，候选范数溢出导致错选，实测 14/400 解封装失败；改为 uint32 后 0/400 | 本实现 uint64 累加 |
 | DR-12 | pk/ct 编码格式 | 逐位移植；`__uint128_t` 除法改为 16 位 limb 倒数乘法（32 位目标可用） |
-| DR-13 | END-512 参考 KeyGen 在 SHAKE256 状态上混用 SHAKE128 的两种读取接口：`shake128_squeeze` 沿用过期的 `pos`，使最后 48 个采样字节与第 200–247 字节相同（`scripts/check_keygen_sampling.py`，100 个 KAT 种子均复现，结果见 `docs/keygen_sampling_512.csv`） | 经设计人员确认（2026-11-12）：拒绝密钥和三元采样均通过 `shake256_squeeze` 连续读取，END-512 的密钥因此与参考实现不同。旧向量用于导入密钥回归。END-1024 保留参考 XOF 行为 |
+| DR-13 | END-512 参考 KeyGen 在 SHAKE256 状态上混用 SHAKE128 的两种读取接口：`shake128_squeeze` 沿用过期的 `pos`，使最后 48 个采样字节与第 200–247 字节相同（`scripts/check_keygen_sampling.py`，100 个 KAT 种子均复现） | 经设计人员确认（2026-11-12）：拒绝密钥和三元采样均通过 `shake256_squeeze` 连续读取，END-512 的密钥因此与参考实现不同。旧向量用于导入密钥回归。END-1024 保留参考 XOF 行为 |
 | DR-14 | sk 无序列化 | 本设计紧凑格式 §8.3 |
 | DR-15 | 参考 FO 比较解码后的系数数组 | 改为密文字节比较（对合法密文等价；对非规范 1024 密文更严格，符合 FO） |
 | DR-16 | 参考旋转用秘密下标 `w[abs(i−idx)]` | 全部后端用公开地址的桶形移位 |

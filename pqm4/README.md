@@ -37,7 +37,7 @@ python3 convert_benchmarks.py md
 python3 benchmarks.py  -p nucleo-l4r5zi -u /dev/ttyACM0 end512 end1024 ml-kem-512 ml-kem-1024
 ```
 
-指令数对比（需要 `--enable-plugins` 编译的 QEMU，见 `docs/PERFORMANCE.md`）：
+指令数对比（需要用 `--enable-plugins` 从源码编译的 QEMU，指令计数插件是其中的 `tests/tcg/plugins/libinsn.so`）：
 
 ```bash
 python3 pqm4/export_pqm4.py ~/pqm4 --icount

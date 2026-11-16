@@ -13,9 +13,8 @@
 | `platform/cortex-m/` | 裸机启动代码、链接脚本、半主机、QEMU 运行脚本 |
 | `golden/` | Python 精确算术 golden model（可执行规范）与 wrap 注入测试 |
 | `test/`, `bench/` | 测试程序、基准程序 |
-| `docs/` | 设计文档、代码阅读文档、测试报告、性能报告 |
 
-END-512 的 KeyGen 使用连续 SHAKE256 流，密钥因此与参考实现不同；封装和解封装仍用参考实现的向量在已有密钥上验证。END-1024 复现参考实现 `dde0a77` 的 KeyGen、封装和解封装向量。详见 [测试报告](docs/TEST_REPORT.md)。
+END-512 的 KeyGen 使用连续 SHAKE256 流，密钥因此与参考实现不同；封装和解封装仍用参考实现的向量在已有密钥上验证。END-1024 复现参考实现 `dde0a77` 的 KeyGen、封装和解封装向量。
 
 ## 快速开始
 
@@ -45,6 +44,7 @@ Windows 下在 WSL 里执行这些命令。
 
 - `src/common/end_tables.h`（twiddle 等常数表）在首次构建时由 `scripts/gen_tables.py` 生成。
 - 测试向量不随仓库发布。`test_kat`、`test_wraps` 和 golden model 的命令从 `kat/` 读取向量；某个向量文件不存在时，`make test_all` 和 `scripts/qemu_m_tests.sh` 跳过需要它的回放并给出提示。向量文件有三类：`kat_end{512,1024}_ref.txt`（由参考实现 `dde0a77` 生成）、`kat_end512_shake256.txt`（`test_kat kat/kat_end512_ref.txt 100 --generate`）、`wraps_end{512,1024}.txt`（`python3 golden/test_wraps.py --dump`）。
+- 设计文档、测试报告和性能报告不随仓库发布。
 
 ## API（`src/common/end_api.h`）
 
@@ -64,11 +64,7 @@ int end512_crypto_kem_dec_exp(uint8_t *ss, const uint8_t *ct, const end_expkey *
 
 ## 文档
 
-- `docs/DESIGN.md`：设计文档（决策 D0–D4、数学依据 V1–V7、模块与内核设计、数值范围、常数时间、DR 记录）
-- `docs/CODE_GUIDE.md`：代码阅读理解文档（每个模块的功能、入口/出口、调用关系、阅读顺序）
-- `docs/TEST_REPORT.md`：测试验收报告
-- `docs/PERFORMANCE.md`：性能统计（主机周期数、QEMU 动态指令数、栈/代码尺寸，pqm4 框架下与 ML-KEM 的对比）
-- `pqm4/README.md`：接入 pqm4 基准框架的步骤（导出、测试、基准、真板测量）
+`pqm4/README.md` 说明接入 pqm4 基准框架的步骤：导出、测试、基准、真板测量。
 
 ## 许可与来源
 

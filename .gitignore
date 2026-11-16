@@ -3,9 +3,9 @@
 # ---- generated sources (scripts/gen_tables.py, run by the first build) ----
 src/common/end_tables.h
 
-# ---- test vectors and measurement data -------------------------------
+# ---- test vectors, documents and measurement data ---------------------
 /kat/
-docs/*.csv
+/docs/
 *_results*.txt
 *.log
 

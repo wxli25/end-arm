@@ -1,6 +1,6 @@
 #!/bin/bash
 # Consolidated dynamic-instruction-count table (QEMU + libinsn plugin) for all backends / parameter sets.
-# Requires the plugin-enabled QEMU in /opt/qemu-plugins (see docs/PERFORMANCE.md) and the bench binaries:
+# Requires a QEMU built with --enable-plugins (default /opt/qemu-plugins, see scripts/qemu_icount.sh) and the bench binaries:
 #   AArch64 : build/aarch64-<backend>-<N>/bench          (make BACKEND=... ARCH=aarch64 CC=aarch64-linux-gnu-gcc ...)
 #   Cortex-M: platform/cortex-m/build/<backend>-<N>-cortex-m4/bench.elf
 set -euo pipefail

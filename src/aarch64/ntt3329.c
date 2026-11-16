@@ -9,83 +9,36 @@
 #define L END_LEAF
 #define P 3329
 
-static inline void ct_layer(int16_t *a, unsigned len, unsigned *k)
+/* forward and inverse transform: three merged layers per pass (neon_ntt7.h).
+ * forward: inputs reduced to |a| <= 1665 when they are read, seven lazy layers (< 1665 + 7 * 3329), canonical output.
+ * inverse: sums of layer 7 reduced to |a| <= 1665; after three more layers the four sums (< 8 * 3329) are reduced
+ *          again, so the last three layers stay below 8 * 3329 as well; exact centred output. */
+static inline int16x8_t barrett3329v(int16x8_t x)
 {
-    const int16x8_t pv = vdupq_n_s16(P), pinv = vdupq_n_s16(PINV16_3329);
-    unsigned start, j;
-    for (start = 0; start < END_N; start += 2 * len) {
-        int16x8_t z = vdupq_n_s16(end_zetas3329_mont[*k]), zq = vmulq_s16(z, pinv);
-        (*k)++;
-        for (j = start; j < start + len; j += 8) {
-            int16x8_t x = vld1q_s16(a + j), y = vld1q_s16(a + j + len);
-            int16x8_t t = neon_montmul(y, z, zq, pv);
-            vst1q_s16(a + j + len, vsubq_s16(x, t));
-            vst1q_s16(a + j, vaddq_s16(x, t));
-        }
-    }
+    return neon_barrett(x, vdupq_n_s16(BARRETT_V_3329), vdupq_n_s16(P));
 }
-
-void poly_ntt3329(int16_t a[END_N])
+static inline int16x8_t canon3329v(int16x8_t x)
 {
-    const int16x8_t pv = vdupq_n_s16(P), bv = vdupq_n_s16(BARRETT_V_3329);
-    unsigned i, len, k = 1;
-    for (i = 0; i < END_N; i += 8)
-        vst1q_s16(a + i, neon_barrett(vld1q_s16(a + i), bv, pv));
-    for (len = END_N >> 1; len >= 8; len >>= 1)
-        ct_layer(a, len, &k);
-#if L == 4
-    const int16x8_t pinv = vdupq_n_s16(PINV16_3329);
-    for (i = 0; i < END_N; i += 16, k += 2) {
-        int16x8_t v0 = vld1q_s16(a + i), v1 = vld1q_s16(a + i + 8);
-        int16x8_t zz = vcombine_s16(vdup_n_s16(end_zetas3329_mont[k]), vdup_n_s16(end_zetas3329_mont[k + 1]));
-        int16x8_t zq = vmulq_s16(zz, pinv);
-        int16x8_t lo = neon_zip64_lo(v0, v1), hi = neon_zip64_hi(v0, v1);
-        int16x8_t t = neon_montmul(hi, zz, zq, pv);
-        int16x8_t ln = vaddq_s16(lo, t), hn = vsubq_s16(lo, t);
-        vst1q_s16(a + i, neon_zip64_lo(ln, hn));
-        vst1q_s16(a + i + 8, neon_zip64_hi(ln, hn));
-    }
-#endif
-    for (i = 0; i < END_N; i += 8)
-        vst1q_s16(a + i, neon_canon(neon_barrett(vld1q_s16(a + i), bv, pv), pv));
+    return neon_canon(barrett3329v(x), vdupq_n_s16(P));
 }
-
-void poly_intt3329(int16_t a[END_N])
+static inline int16x8_t center3329v(int16x8_t x)
 {
-    const int16x8_t pv = vdupq_n_s16(P), bv = vdupq_n_s16(BARRETT_V_3329), pinv = vdupq_n_s16(PINV16_3329);
-    unsigned i, len, b, j;
-    for (i = 0; i < END_N; i += 8)
-        vst1q_s16(a + i, neon_barrett(vld1q_s16(a + i), bv, pv));
-#if L == 4
-    for (i = 0, b = 0; i < END_N; i += 16, b += 2) {
-        int16x8_t v0 = vld1q_s16(a + i), v1 = vld1q_s16(a + i + 8);
-        int16x8_t zz = vcombine_s16(vdup_n_s16(end_zetas3329_inv_mont[64 + b]), vdup_n_s16(end_zetas3329_inv_mont[64 + b + 1]));
-        int16x8_t zq = vmulq_s16(zz, pinv);
-        int16x8_t lo = neon_zip64_lo(v0, v1), hi = neon_zip64_hi(v0, v1);
-        int16x8_t ln = neon_barrett(vaddq_s16(lo, hi), bv, pv);
-        int16x8_t hn = neon_montmul(vsubq_s16(lo, hi), zz, zq, pv);
-        vst1q_s16(a + i, neon_zip64_lo(ln, hn));
-        vst1q_s16(a + i + 8, neon_zip64_hi(ln, hn));
-    }
-#endif
-    for (len = 8; len <= END_N >> 1; len <<= 1) {
-        unsigned nb = END_N / (2 * len);
-        for (b = 0; b < nb; b++) {
-            int16x8_t z = vdupq_n_s16(end_zetas3329_inv_mont[nb + b]), zq = vmulq_s16(z, pinv);
-            unsigned start = 2 * len * b;
-            for (j = start; j < start + len; j += 8) {
-                int16x8_t x = vld1q_s16(a + j), y = vld1q_s16(a + j + len);
-                vst1q_s16(a + j, neon_barrett(vaddq_s16(x, y), bv, pv));
-                vst1q_s16(a + j + len, neon_montmul(vsubq_s16(x, y), z, zq, pv));
-            }
-        }
-    }
-    {
-        int16x8_t z = vdupq_n_s16(END_INV128_MONT_MOD3329), zq = vmulq_s16(z, pinv), half = vdupq_n_s16(1664);
-        for (i = 0; i < END_N; i += 8)
-            vst1q_s16(a + i, neon_center_exact(neon_barrett(neon_montmul(vld1q_s16(a + i), z, zq, pv), bv, pv), pv, half));
-    }
+    return neon_center_exact(barrett3329v(x), vdupq_n_s16(P), vdupq_n_s16(1664));
 }
+#define NTT7_FWD        poly_ntt3329
+#define NTT7_INV        poly_intt3329
+#define NTT7_P          3329
+#define NTT7_PINV       PINV16_3329
+#define NTT7_ZETAS      end_zetas3329_mont
+#define NTT7_ZETAS_INV  end_zetas3329_inv_mont
+#define NTT7_NINV       END_INV128_MONT_MOD3329
+#define NTT7_FQMUL(a, b) fqmul3329(a, b)
+#define NTT7_RED_IN(x)  barrett3329v(x)
+#define NTT7_FWD_OUT(x) canon3329v(x)
+#define NTT7_RED_SUM(x) barrett3329v(x)
+#define NTT7_RED_MID    1
+#define NTT7_INV_OUT(x) center3329v(x)
+#include "neon_ntt7.h"
 
 /*
  * leaf product coefficient:  lo + z * hi  with 32-bit accumulators lo, hi (|.| < 2^27)

@@ -9,7 +9,7 @@
 | `src/common/` | 与后端无关的方案层：参数、编解码、密钥生成（含 ntrugen 求解器）、DecodeTrap 解码、ACWC/FO 变换、API |
 | `src/ref/` | 可移植 C 内核（基线、正确性参照、回退路径） |
 | `src/aarch64/` | Cortex-A：AArch64 NEON intrinsics 内核 |
-| `src/armv7em/` | Cortex-M4/M33：ARMv7E-M DSP（打包 16 位 SIMD + SMULxx Montgomery）内核 |
+| `src/armv7em/` | Cortex-M4/M33：C + DSP 内核（`BACKEND=armv7em`）和手写 Thumb-2 汇编内核（`BACKEND=m4f`：Plantard 算术、NTT 层合并、FPU 寄存器作暂存） |
 | `platform/cortex-m/` | 裸机启动代码、链接脚本、半主机、QEMU 运行脚本 |
 | `golden/` | Python 精确算术 golden model（可执行规范）与 wrap 注入测试 |
 | `test/`, `bench/` | 测试程序、基准程序 |
@@ -30,8 +30,8 @@ make END_N=512 BACKEND=aarch64 ARCH=aarch64 CC=aarch64-linux-gnu-gcc CFLAGS=-O3 
      RUN="qemu-aarch64 -L /usr/aarch64-linux-gnu" test_all
 
 # 3. Cortex-M4：裸机构建 + QEMU (mps2-an386) 运行
-cd platform/cortex-m && make END_N=512 BACKEND=armv7em all && cd ../..
-bash scripts/qemu_m_tests.sh 512 armv7em
+cd platform/cortex-m && make END_N=512 BACKEND=m4f all && cd ../..      # 汇编内核；BACKEND=armv7em 为 C + DSP
+bash scripts/qemu_m_tests.sh 512 m4f
 
 # 4. golden model（需要测试向量，见下文）
 python3 golden/end_golden.py kat/kat_end512_shake256.txt --n 512 --max 100
@@ -42,7 +42,7 @@ Windows 下在 WSL 里执行这些命令。
 
 仓库只存放源码：
 
-- `src/common/end_tables.h`（twiddle 等常数表）在首次构建时由 `scripts/gen_tables.py` 生成。
+- `src/common/end_tables.h` 和 `src/armv7em/end_tables_plant.h`（twiddle 等常数表）在首次构建时由 `scripts/gen_tables.py` 生成。
 - 测试向量不随仓库发布。`test_kat`、`test_wraps` 和 golden model 的命令从 `kat/` 读取向量；某个向量文件不存在时，`make test_all` 和 `scripts/qemu_m_tests.sh` 跳过需要它的回放并给出提示。向量文件有三类：`kat_end{512,1024}_ref.txt`（由参考实现 `dde0a77` 生成）、`kat_end512_shake256.txt`（`test_kat kat/kat_end512_ref.txt 100 --generate`）、`wraps_end{512,1024}.txt`（`python3 golden/test_wraps.py --dump`）。
 - 设计文档、测试报告和性能报告不随仓库发布。
 
@@ -68,4 +68,4 @@ int end512_crypto_kem_dec_exp(uint8_t *ss, const uint8_t *ct, const end_expkey *
 
 ## 许可与来源
 
-`src/common/ntrugen/` 来自 Thomas Pornin 的 ntrugen（MIT，经论文参考实现修改）；`src/common/fips202.c` 来自 pq-crystals（CC0）；`src/common/end_codec.c` 的编码格式与参考实现一致。其余代码为本工程编写。
+`src/common/ntrugen/` 来自 Thomas Pornin 的 ntrugen（MIT，经论文参考实现修改）；`src/common/fips202.c` 来自 pq-crystals（CC0）；`platform/cortex-m/keccakf1600.S` 是 Keccak 团队（XKCP）的 ARMv7-M Keccak-f[1600] 汇编，含 Alexandre Adomnicai 的优化，取自 pqm4（CC0）；`src/common/end_codec.c` 的编码格式与参考实现一致。其余代码为本工程编写，其中 Cortex-M4 汇编内核的 Plantard 运算序列和合并层 NTT 的安排参照 pqm4 中的 ML-KEM 代码。

@@ -9,7 +9,8 @@
  *   GF stage : for a candidate e~ (sparse, +-1):  s~ = s~'' - 2 e~ f ;  accept iff all entries are +-1.
  *
  * Every loop bound, memory address and candidate count is public; secret-dependent choices are made
- * with masks (poly_cmov*, fcl_select, poly_rot16).
+ * with masks (poly_cmov*, fcl_select, poly_rot16). The per-coefficient loops are kernels (poly.h): their
+ * portable versions are in end_deckern.c, a backend may replace them.
  */
 #include <string.h>
 #include "end_internal.h"
@@ -18,24 +19,13 @@
 #define M0A END_M0_GF
 #define M0B END_M0_GF2
 
-/* r in [0,257) -> representative mod 514 with the given parity, centred to [-257, 256] */
-static inline int16_t lift_center_parity(int16_t r, uint16_t parity)
-{
-    int32_t x = r;
-    x += END_Q & -(int32_t)(((uint32_t)x ^ parity) & 1u);     /* fix parity: x or x + 257       */
-    x -= (2 * END_Q) & ~((x - END_Q) >> 31);                   /* x >= 257 -> x - 514           */
-    return (int16_t)x;
-}
-
 /* NTT-domain helper: t = INTT257(cn o k), then v = lift(2 t - cst mod 257) */
 static void residue_lift(int16_t out[END_N], const int16_t cn[END_N], const int16_t kn[END_N],
                          const int16_t cst[END_N], uint16_t parity, int16_t tmp[END_N])
 {
-    unsigned i;
     poly_basemul257(tmp, cn, kn);
     poly_intt257(tmp);
-    for (i = 0; i < END_N; i++)
-        out[i] = lift_center_parity(red257((int16_t)(2 * tmp[i] - cst[i])), parity);
+    poly_lift257(out, tmp, cst, parity);
 }
 
 /* candidate enumeration order (must match golden/end_golden.py candidates()):
@@ -63,12 +53,12 @@ int decode_trap(int16_t sbar[END_N], const end_expkey *ek, const int16_t cprime[
     int16_t cn[END_N] END_ALIGN, t1[END_N] END_ALIGN, t2[END_N] END_ALIGN;
     int16_t c1[END_N] END_ALIGN, c2[END_N] END_ALIGN;
     int32_t C2[END_N] END_ALIGN, C2b[END_N] END_ALIGN;
+    int32_t C2t[END_N] END_ALIGN;      /* FCL scores, then C2~ of the candidate being tried */
     int16_t sp[END_N] END_ALIGN;       /* s~'                              */
     int16_t best[END_N] END_ALIGN;     /* best s~'' of the gf stage        */
-    int16_t rv[END_N] END_ALIGN;       /* rounding vector r of a candidate */
     int16_t wrot[M0A][END_N] END_ALIGN, Frot[M0A][END_N] END_ALIGN;
     int16_t frot[M0B][END_N] END_ALIGN;
-    uint32_t sc[END_N], idx[END_FCL_MAX];
+    uint32_t *sc = (uint32_t *)C2t, idx[END_FCL_MAX];
     cand_t cand[END_NCAND_GF > END_NCAND_GF2 ? END_NCAND_GF : END_NCAND_GF2];
     uint64_t best_score;
     uint32_t found, best_i, i, ci, nc;
@@ -85,18 +75,7 @@ int decode_trap(int16_t sbar[END_N], const end_expkey *ek, const int16_t cprime[
     poly_ntt12289(t2);                                           /* t2 = NTT12289(c1) */
     poly_pointwise12289(t2, t2, ek->wn12289);
     poly_intt12289(t2);                                          /* t2 = w c1 mod 12289, centred */
-    for (i = 0; i < END_N; i++) {
-        int32_t u257 = red257((int16_t)(2 * t1[i] - ek->wconst[i]));           /* w c1 mod 257 */
-        int32_t u12 = t2[i] + ((t2[i] >> 15) & END_QP);                         /* [0, 12289)   */
-        int32_t d = u12 - u257;                                                  /* (-257, 12289) */
-        int32_t tt = mont12289(d * END_INV257_MONT_MOD12289);                   /* d * 257^-1 mod 12289, (-Q',Q') */
-        int32_t u, v;
-        tt += (tt >> 31) & END_QP;                                               /* [0, 12289) */
-        u = u257 + END_Q * tt;                                                   /* [0, qQ): w c1 mod qQ */
-        u += END_QQP & -(int32_t)(((uint32_t)u ^ ek->pwc1) & 1u);               /* parity lift to mod 2qQ */
-        v = END_QP * (int32_t)c2[i] - u;                                         /* (-3qQ, qQ) */
-        C2[i] = center_2qqp(v);                                                  /* [-qQ, qQ) */
-    }
+    poly_crt_c2(C2, t1, t2, c2, ek->wconst, ek->pwc1);           /* C2 = (Q c2 - w c1) mod 2qQ, [-qQ, qQ) */
     /* ---- step 4: s~' = (c1 F_Q - C2 f)/(qQ)  (mod 3329, exact) ------------- */
     memcpy(t1, c1, sizeof t1);
     poly_ntt3329(t1);
@@ -126,32 +105,19 @@ int decode_trap(int16_t sbar[END_N], const end_expkey *ek, const int16_t cprime[
     best_i = 0;
     for (ci = 1; ci < nc; ci++) {
         const cand_t *c = &cand[ci];
-        const int16_t *w0 = wrot[c->k0], *w1 = wrot[c->k1], *F0 = Frot[c->k0], *F1 = Frot[c->k1];
-        int32_t s0 = c->s0, s1 = c->s1;
         uint64_t score;
         uint32_t better;
-        /* r = round((C2 - 2 q w e~) / (2qQ)), |r| <= 6, kept in rv; t2 = r f (exact, |r f| <= 864) */
-        for (i = 0; i < END_N; i++) {
-            int32_t we = s0 * w0[i] + s1 * w1[i];
-            rv[i] = (int16_t)round_div_2qqp(C2[i] - 2 * END_Q * we);
-            t2[i] = rv[i];
-        }
+        /* t2 = r = round((C2 - 2 q w e~) / (2qQ)), |r| <= 6;  C2t = C2~ = C2 - 2 q w e~ - 2qQ r */
+        poly_cand_round(t2, C2t, C2, wrot[c->k0], wrot[c->k1], c->s0, c->s1);
         poly_ntt3329(t2);
         poly_basemul3329(t2, t2, ek->fn3329);
-        poly_intt3329(t2);
-        for (i = 0; i < END_N; i++)
-            t1[i] = (int16_t)(sp[i] + 2 * (s0 * F0[i] + s1 * F1[i]) + 2 * t2[i]);   /* s~'' */
-        score = poly_sqnorm16(t1);
+        poly_intt3329(t2);                                       /* r f (exact, |r f| <= 864) */
+        score = poly_cand_combine(t1, sp, Frot[c->k0], Frot[c->k1], t2, c->s0, c->s1);   /* t1 = s~'' */
         better = (uint32_t)ct_lt_u64(score, best_score);
         best_score = (score & (0ull - (uint64_t)better)) | (best_score & ~(0ull - (uint64_t)better));
         best_i = (ci & (0u - better)) | (best_i & ~(0u - better));
         poly_cmov16(best, t1, (uint16_t)(0u - better));
-        /* C2~ = C2 - 2 q w e~ - 2qQ r, selected with the same mask */
-        for (i = 0; i < END_N; i++) {
-            int32_t we = s0 * w0[i] + s1 * w1[i];
-            int32_t v = C2[i] - 2 * END_Q * we - (int32_t)rv[i] * END_2QQP;
-            C2b[i] = ct_sel_i32(v, C2b[i], 0u - better);
-        }
+        poly_cmov32(C2b, C2t, 0u - better);
     }
     if (diag) { diag[0] = best_i; diag[2] = idx[0]; diag[3] = (M0A > 1) ? idx[1] : 0; }
 
@@ -169,15 +135,8 @@ int decode_trap(int16_t sbar[END_N], const end_expkey *ek, const int16_t cprime[
     found = 0; best_i = 0;
     for (ci = 0; ci < nc; ci++) {
         const cand_t *c = &cand[ci];
-        const int16_t *f0 = frot[c->k0], *f1 = frot[c->k1];
-        int32_t s0 = c->s0, s1 = c->s1;
-        uint32_t acc = 0, pass, take;
-        for (i = 0; i < END_N; i++) {
-            int32_t x = best[i] - 2 * (s0 * f0[i] + s1 * f1[i]);
-            t1[i] = (int16_t)x;
-            acc |= (uint32_t)(x * x - 1);                       /* 0 iff x = +-1 */
-        }
-        pass = ct_is_zero_u32(acc);
+        uint32_t pass, take;
+        pass = ct_is_zero_u32(poly_cand_check(t1, best, frot[c->k0], frot[c->k1], c->s0, c->s1));
         take = pass & ~found;
         poly_cmov16(sbar, t1, (uint16_t)(0u - take));
         best_i = (ci & (0u - take)) | (best_i & ~(0u - take));

@@ -39,6 +39,12 @@ static inline int16x8_t neon_red257(int16x8_t a)
     return r;
 }
 
+/* any int16 -> [-127, 383], congruent mod 257 (one Fermat fold, no correction) */
+static inline int16x8_t neon_fold257(int16x8_t a)
+{
+    return vsubq_s16(vandq_s16(a, vdupq_n_s16(255)), vshrq_n_s16(a, 8));
+}
+
 /* centred Barrett reduction, |r| <= p/2 + 1 */
 static inline int16x8_t neon_barrett(int16x8_t a, int16x8_t v, int16x8_t pv)
 {
@@ -96,5 +102,32 @@ static inline int16x8_t neon_zip32_2(int16x8_t a, int16x8_t b)
 {
     return vreinterpretq_s16_s32(vzip2q_s32(vreinterpretq_s32_s16(a), vreinterpretq_s32_s16(b)));
 }
+
+/*
+ * Three merged layers on eight vectors v[0..7] that lie the same distance apart (neon_ntt7.h).
+ * Cooley-Tukey: twiddles z[0] | z[1], z[2] | z[3..6];  Gentleman-Sande: z[0..3] | z[4], z[5] | z[6].
+ */
+#define NEON_CT(i, j, k) do { \
+        int16x8_t t_ = neon_montmul(v[j], z[k], zq[k], pv); \
+        v[j] = vsubq_s16(v[i], t_); v[i] = vaddq_s16(v[i], t_); \
+    } while (0)
+#define NEON_GS(i, j, k) do { \
+        int16x8_t d_ = vsubq_s16(v[i], v[j]); \
+        v[i] = vaddq_s16(v[i], v[j]); v[j] = neon_montmul(d_, z[k], zq[k], pv); \
+    } while (0)
+static inline void neon_ct3(int16x8_t v[8], const int16x8_t z[7], const int16x8_t zq[7], int16x8_t pv)
+{
+    NEON_CT(0, 4, 0); NEON_CT(1, 5, 0); NEON_CT(2, 6, 0); NEON_CT(3, 7, 0);
+    NEON_CT(0, 2, 1); NEON_CT(1, 3, 1); NEON_CT(4, 6, 2); NEON_CT(5, 7, 2);
+    NEON_CT(0, 1, 3); NEON_CT(2, 3, 4); NEON_CT(4, 5, 5); NEON_CT(6, 7, 6);
+}
+static inline void neon_gs3(int16x8_t v[8], const int16x8_t z[7], const int16x8_t zq[7], int16x8_t pv)
+{
+    NEON_GS(0, 1, 0); NEON_GS(2, 3, 1); NEON_GS(4, 5, 2); NEON_GS(6, 7, 3);
+    NEON_GS(0, 2, 4); NEON_GS(1, 3, 4); NEON_GS(4, 6, 5); NEON_GS(5, 7, 5);
+    NEON_GS(0, 4, 6); NEON_GS(1, 5, 6); NEON_GS(2, 6, 6); NEON_GS(3, 7, 6);
+}
+#define NTT7_CAT2(a, b) a##b
+#define NTT7_CAT(a, b) NTT7_CAT2(a, b)
 
 #endif /* END_NEON_COMMON_H */

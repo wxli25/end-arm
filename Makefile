@@ -20,12 +20,13 @@ LDLIBS   ?=
 RUN      ?=
 PYTHON   ?= python3
 # constant tables: generated on the first build (rule below), not stored in the repository
-TABLES   := src/common/end_tables.h
+TABLES   := src/common/end_tables.h src/armv7em/end_tables_plant.h
 
 BUILD    := build/$(ARCH)-$(BACKEND)-$(END_N)
 
 KERNELS      := ntt257 ntt3329 ntt12289 polyvec baseinv257
-KERNEL_SRCS  := $(foreach k,$(KERNELS),$(if $(wildcard src/$(BACKEND)/$(k).c),src/$(BACKEND)/$(k).c,src/ref/$(k).c))
+KERNEL_SRCS  := $(foreach k,$(KERNELS),$(if $(wildcard src/$(BACKEND)/$(k).c),src/$(BACKEND)/$(k).c,src/ref/$(k).c)) \
+                src/common/end_deckern.c
 KERNEL_ASM   := $(wildcard src/$(BACKEND)/*.S)
 COMMON_SRCS  := src/common/end_codec.c src/common/end_decode.c src/common/end_kem.c src/common/end_keygen.c \
                 src/common/fips202.c src/common/randombytes.c
@@ -50,7 +51,7 @@ $(BUILD)/libend.a: $(LIB_OBJS)
 
 lib: $(BUILD)/libend.a
 
-$(TABLES): scripts/gen_tables.py
+$(TABLES) &: scripts/gen_tables.py
 	$(PYTHON) scripts/gen_tables.py $(TABLES)
 
 tables: $(TABLES)
@@ -72,6 +73,9 @@ $(BUILD)/test_wraps: test/test_wraps.c $(BUILD)/libend.a
 
 $(BUILD)/bench: bench/bench.c bench/cycles.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) bench/bench.c bench/cycles.c -o $@ $(BUILD)/libend.a $(LDFLAGS) $(LDLIBS)
+
+$(BUILD)/speed_host: bench/speed_host.c bench/cycles.c $(BUILD)/libend.a
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) $(STD) bench/speed_host.c bench/cycles.c -o $@ $(BUILD)/libend.a $(LDFLAGS) $(LDLIBS)
 
 test_kernels: $(BUILD)/test_kernels
 	$(RUN) $(BUILD)/test_kernels
@@ -115,9 +119,12 @@ test_all: test_kernels test_kat test_roundtrip test_wraps test_entropy
 bench: $(BUILD)/bench
 	$(RUN) $(BUILD)/bench
 
+speed_host: $(BUILD)/speed_host
+	$(RUN) $(BUILD)/speed_host
+
 clean:
 	rm -rf build
 
 -include $(wildcard $(BUILD)/src/*/*.d $(BUILD)/src/*/*/*.d)
 
-.PHONY: lib tables test_kernels test_kat test_roundtrip test_wraps test_entropy test_all bench clean
+.PHONY: lib tables test_kernels test_kat test_roundtrip test_wraps test_entropy test_all bench speed_host clean

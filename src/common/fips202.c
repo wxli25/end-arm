@@ -10,6 +10,92 @@
 #define NROUNDS 24
 #define ROL(a, offset) ((a << offset) ^ (a >> (64-offset)))
 
+#ifdef END_KECCAK_ASM
+/*
+ * Keccak-f[1600] in ARMv7-M assembly (keccakf1600.S: XKCP, with the optimisations of A. Adomnicai; CC0).
+ * The assembly keeps the state in a bit-interleaved form, so every access to the state goes through its
+ * XOR / extract functions. The helpers below have exactly the semantics of the portable ones further down.
+ */
+void KeccakF1600_StatePermute(uint64_t *state);
+void KeccakF1600_StateXORBytes(uint64_t *state, const unsigned char *data, unsigned int offset, unsigned int length);
+void KeccakF1600_StateExtractBytes(uint64_t *state, unsigned char *data, unsigned int offset, unsigned int length);
+
+static void keccak_init(uint64_t s[25])
+{
+  unsigned int i;
+  for(i=0;i<25;i++)
+    s[i] = 0;
+}
+
+static unsigned int keccak_absorb(uint64_t s[25], unsigned int pos, unsigned int r, const uint8_t *in, size_t inlen)
+{
+  while(pos+inlen >= r) {
+    KeccakF1600_StateXORBytes(s, in, pos, r-pos);
+    in += r-pos;
+    inlen -= r-pos;
+    KeccakF1600_StatePermute(s);
+    pos = 0;
+  }
+  KeccakF1600_StateXORBytes(s, in, pos, (unsigned int)inlen);
+  return pos + (unsigned int)inlen;
+}
+
+static void keccak_finalize(uint64_t s[25], unsigned int pos, unsigned int r, uint8_t p)
+{
+  uint8_t last = 0x80;
+  KeccakF1600_StateXORBytes(s, &p, pos, 1);
+  KeccakF1600_StateXORBytes(s, &last, r-1, 1);
+}
+
+static unsigned int keccak_squeeze(uint8_t *out, size_t outlen, uint64_t s[25], unsigned int pos, unsigned int r)
+{
+  while(outlen) {
+    unsigned int n;
+    if(pos == r) {
+      KeccakF1600_StatePermute(s);
+      pos = 0;
+    }
+    n = r - pos;
+    if(n > outlen) n = (unsigned int)outlen;
+    KeccakF1600_StateExtractBytes(s, out, pos, n);
+    out += n;
+    outlen -= n;
+    pos += n;
+  }
+  return pos;
+}
+
+static void keccak_absorb_once(uint64_t s[25], unsigned int r, const uint8_t *in, size_t inlen, uint8_t p)
+{
+  keccak_init(s);
+  while(inlen >= r) {
+    KeccakF1600_StateXORBytes(s, in, 0, r);
+    in += r;
+    inlen -= r;
+    KeccakF1600_StatePermute(s);
+  }
+  KeccakF1600_StateXORBytes(s, in, 0, (unsigned int)inlen);
+  keccak_finalize(s, (unsigned int)inlen, r, p);
+}
+
+static void keccak_squeezeblocks(uint8_t *out, size_t nblocks, uint64_t s[25], unsigned int r)
+{
+  while(nblocks) {
+    KeccakF1600_StatePermute(s);
+    KeccakF1600_StateExtractBytes(s, out, 0, r);
+    out += r;
+    nblocks -= 1;
+  }
+}
+
+/* the first n bytes of the state */
+static void keccak_extract(uint8_t *out, uint64_t s[25], unsigned int n)
+{
+  KeccakF1600_StateExtractBytes(s, out, 0, n);
+}
+
+#else /* portable C */
+
 /*************************************************
 * Name:        load64
 *
@@ -513,6 +599,16 @@ static void keccak_squeezeblocks(uint8_t *out,
   }
 }
 
+/* the first n bytes of the state (n a multiple of 8) */
+static void keccak_extract(uint8_t *out, uint64_t s[25], unsigned int n)
+{
+  unsigned int i;
+  for(i=0;i<n/8;i++)
+    store64(out+8*i, s[i]);
+}
+
+#endif /* END_KECCAK_ASM */
+
 /*************************************************
 * Name:        shake128_init
 *
@@ -744,13 +840,11 @@ void shake256(uint8_t *out, size_t outlen, const uint8_t *in, size_t inlen)
 **************************************************/
 void sha3_256(uint8_t h[32], const uint8_t *in, size_t inlen)
 {
-  unsigned int i;
   uint64_t s[25];
 
   keccak_absorb_once(s, SHA3_256_RATE, in, inlen, 0x06);
   KeccakF1600_StatePermute(s);
-  for(i=0;i<4;i++)
-    store64(h+8*i,s[i]);
+  keccak_extract(h, s, 32);
 }
 
 /*************************************************
@@ -764,11 +858,9 @@ void sha3_256(uint8_t h[32], const uint8_t *in, size_t inlen)
 **************************************************/
 void sha3_512(uint8_t h[64], const uint8_t *in, size_t inlen)
 {
-  unsigned int i;
   uint64_t s[25];
 
   keccak_absorb_once(s, SHA3_512_RATE, in, inlen, 0x06);
   KeccakF1600_StatePermute(s);
-  for(i=0;i<8;i++)
-    store64(h+8*i,s[i]);
+  keccak_extract(h, s, 64);
 }

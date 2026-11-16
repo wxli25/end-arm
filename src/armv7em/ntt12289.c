@@ -6,6 +6,38 @@
 #include "end_arith.h"
 #include "dsp.h"
 
+#ifdef END_M4_ASM
+/*
+ * Hand-written Thumb-2 kernels (ntt12289_m4.S): Plantard arithmetic, four merged layers per pass, reductions
+ * only where a value could leave int16. The NTT-domain representation of this backend is lazy:
+ *   poly_ntt12289        in: |a| <= 8191        out: |x| <= 18432 (any representative)
+ *   poly_pointwise12289  in: any int16          out: [-6144, 6144]
+ *   poly_intt12289       in: |a| <= 8191        out: [-6144, 6144]
+ */
+#include "end_tables_plant.h"
+
+void END_NS(m4_ntt12289)(int16_t a[END_N], const int32_t *tw);
+void END_NS(m4_intt12289)(int16_t a[END_N], const int32_t *tw);
+void END_NS(m4_pointwise12289)(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N], int32_t plantc);
+
+#if END_N == 512
+#define PLANT_NTT  end_plant_ntt12289_512
+#define PLANT_INTT end_plant_intt12289_512
+#else
+#define PLANT_NTT  end_plant_ntt12289_1024
+#define PLANT_INTT end_plant_intt12289_1024
+#endif
+
+void poly_ntt12289(int16_t a[END_N]) { END_NS(m4_ntt12289)(a, PLANT_NTT); }
+void poly_intt12289(int16_t a[END_N]) { END_NS(m4_intt12289)(a, PLANT_INTT); }
+
+void poly_pointwise12289(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N])
+{
+    END_NS(m4_pointwise12289)(r, a, b, END_PLANT_C12289);
+}
+
+#else /* C with DSP intrinsics */
+
 #define P 12289
 #define NEGP (-12289)
 #define PINV (-12287)    /* 12289^-1 mod 2^16 */
@@ -122,3 +154,5 @@ void poly_pointwise12289(int16_t r[END_N], const int16_t a[END_N], const int16_t
         dsp_store_pair(r, i, dsp_pkhbt(canon12289((int16_t)dsp_lo(v)), canon12289((int16_t)dsp_hi(v))));
     }
 }
+
+#endif /* END_M4_ASM */

@@ -7,6 +7,30 @@
 #include "end_arith.h"
 #include "dsp.h"
 
+#ifdef END_M4_ASM
+/*
+ * Hand-written Thumb-2 kernels (ntt7_m4.S, basemul_m4.S): Plantard arithmetic, merged layers, no reductions
+ * between the forward layers. The NTT-domain representation of this backend is therefore lazy:
+ *   poly_ntt3329     in: |a| <= 16384          out: |x| <= |a| + 7*1664 (any representative)
+ *   poly_basemul3329 in: any int16             out: [-1664, 1664]
+ *   poly_intt3329    in: |a| <= 4095           out: [-1664, 1664] (exact if |true| <= 1664)
+ */
+#include "end_tables_plant.h"
+
+void END_NS(m4_ntt3329)(int16_t a[END_N], const int32_t *tw);
+void END_NS(m4_intt3329)(int16_t a[END_N], const int32_t *tw);
+void END_NS(m4_basemul3329)(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N], const int32_t *tab);
+
+void poly_ntt3329(int16_t a[END_N]) { END_NS(m4_ntt3329)(a, end_plant_ntt3329); }
+void poly_intt3329(int16_t a[END_N]) { END_NS(m4_intt3329)(a, end_plant_intt3329); }
+
+void poly_basemul3329(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N])
+{
+    END_NS(m4_basemul3329)(r, a, b, end_plant_base3329);
+}
+
+#else /* C with DSP intrinsics */
+
 #define L END_LEAF
 #define P 3329
 #define NEGP (-3329)
@@ -105,3 +129,5 @@ void poly_basemul3329(int16_t r[END_N], const int16_t a[END_N], const int16_t b[
         for (k = 0; k < L; k++) o[k] = tmp[k];
     }
 }
+
+#endif /* END_M4_ASM */

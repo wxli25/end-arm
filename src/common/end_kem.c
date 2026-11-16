@@ -9,21 +9,28 @@
 /* ------------------------------------------------------------------------- */
 /* expanded key                                                               */
 /* ------------------------------------------------------------------------- */
-static void ones_product_mod257(int16_t out[END_N], const int16_t an[END_N], int16_t tmp[END_N])
+/* out = a * (1 + x + ... + x^(n-1)) mod (x^n + 1, 257), a in coefficient form with entries in [0, 257).
+ * Coefficient k of the product is sum_{i<=k} a_i - sum_{i>k} a_i = 2 P_k - S (P_k prefix sum, S total sum),
+ * so no transform is needed. out must not alias a. */
+static void ones_product_mod257(int16_t out[END_N], const int16_t a[END_N])
 {
-    /* out = a * (1 + x + ... + x^(n-1)) mod 257, a given in NTT-257 form */
+    int32_t s = 0, c, t;
     unsigned i;
-    for (i = 0; i < END_N; i++) tmp[i] = 1;
-    poly_ntt257(tmp);
-    poly_basemul257(out, an, tmp);
-    poly_intt257(out);
+    for (i = 0; i < END_N; i++) s += a[i];
+    c = END_Q - red257_32(s);                           /* (2 P_k - S) mod 257 for k = -1, in [1, 257] */
+    for (i = 0; i < END_N; i++) {
+        c += 2 * a[i];                                  /* c_k = c_(k-1) + 2 a_k, below 3*257 */
+        t = c - END_Q; c = t + (END_Q & (t >> 31));     /* two conditional subtractions: [0, 257) */
+        t = c - END_Q; c = t + (END_Q & (t >> 31));
+        out[i] = (int16_t)c;
+    }
 }
 
 void expkey_from_parts(end_expkey *ek, const uint8_t k[END_MSGBYTES], const int16_t h_ntt[END_N],
                                const int8_t f[END_N], const int8_t g[END_N], const int8_t F[END_N],
                                const int8_t G[END_N], const int16_t w[END_N])
 {
-    int16_t t1[END_N] END_ALIGN, t2[END_N] END_ALIGN, t3[END_N] END_ALIGN;
+    int16_t t1[END_N] END_ALIGN, t2[END_N] END_ALIGN;
     unsigned i;
     int32_t sw = 0, sf = 0, sg = 0, sF = 0, sG = 0;
 
@@ -46,18 +53,19 @@ void expkey_from_parts(end_expkey *ek, const uint8_t k[END_MSGBYTES], const int1
     for (i = 0; i < END_N; i++) t1[i] = red257(w[i]);
     poly_ntt257(t1);                                                 /* NTT257(w) */
     poly_basemul257(ek->wfn257, t1, ek->fn257);                     /* NTT257(w f) */
-    /* const1 = (g + delta f) * 1, const2 = (G + delta F) * 1, wconst = w * const1  (all mod 257) */
+    /* const1 = (g + delta f) * 1, const2 = (G + delta F) * 1, wconst = w * const1  (all mod 257),
+     * where 1 stands for the all-ones polynomial */
     for (i = 0; i < END_N; i++) t2[i] = red257((int16_t)(g[i] + END_DELTA * f[i]));
+    ones_product_mod257(ek->const1, t2);
     poly_ntt257(t2);
-    ones_product_mod257(ek->const1, t2, t3);
     poly_basemul257(t2, t2, t1);                                     /* NTT257(w (g + delta f)) */
-    ones_product_mod257(ek->wconst, t2, t3);
+    poly_intt257(t2);                                                /* w (g + delta f) mod 257, [0, 257) */
+    ones_product_mod257(ek->wconst, t2);
     for (i = 0; i < END_N; i++) t2[i] = red257((int16_t)(G[i] + END_DELTA * F[i]));
-    poly_ntt257(t2);
-    ones_product_mod257(ek->const2, t2, t3);
+    ones_product_mod257(ek->const2, t2);
 
-    /* NTT-12289 form of w */
-    memcpy(ek->wn12289, w, sizeof ek->wn12289);
+    /* NTT-12289 form of w (w spans the whole int16 range; the forward transforms take |a| <= 8191, see poly.h) */
+    for (i = 0; i < END_N; i++) ek->wn12289[i] = barrett12289(w[i]);
     poly_ntt12289(ek->wn12289);
 
     /* NTT-3329 forms of f and F_Q = Q F - w f  (exact integers reduced mod 3329) */

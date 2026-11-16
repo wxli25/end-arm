@@ -7,6 +7,31 @@
 #include "end_arith.h"
 #include "dsp.h"
 
+#ifdef END_M4_ASM
+/*
+ * Hand-written Thumb-2 kernels (ntt7_m4.S, basemul_m4.S): Plantard arithmetic, merged layers, no reductions
+ * inside the transforms (9-bit values leave six spare bits in an int16). The NTT-257 layout and the canonical
+ * [0, 257) outputs are the public-key wire format and are kept:
+ *   poly_ntt257      in: |a| <= 16384          out: [0, 257)
+ *   poly_basemul257  in: any int16             out: [0, 257)
+ *   poly_intt257     in: |a| <= 4095           out: [0, 257)
+ */
+#include "end_tables_plant.h"
+
+void END_NS(m4_ntt257)(int16_t a[END_N], const int32_t *tw);
+void END_NS(m4_intt257)(int16_t a[END_N], const int32_t *tw);
+void END_NS(m4_basemul257)(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N], const int32_t *tab);
+
+void poly_ntt257(int16_t a[END_N]) { END_NS(m4_ntt257)(a, end_plant_ntt257); }
+void poly_intt257(int16_t a[END_N]) { END_NS(m4_intt257)(a, end_plant_intt257); }
+
+void poly_basemul257(int16_t r[END_N], const int16_t a[END_N], const int16_t b[END_N])
+{
+    END_NS(m4_basemul257)(r, a, b, end_plant_base257);
+}
+
+#else /* C with DSP intrinsics */
+
 #define L END_LEAF
 #define P 257
 #define NEGP (-257)
@@ -108,3 +133,5 @@ void poly_basemul257(int16_t r[END_N], const int16_t a[END_N], const int16_t b[E
     }
 }
 #endif
+
+#endif /* END_M4_ASM */

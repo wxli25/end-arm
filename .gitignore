@@ -2,6 +2,7 @@
 
 # ---- generated sources (scripts/gen_tables.py, run by the first build) ----
 src/common/end_tables.h
+src/armv7em/end_tables_plant.h
 
 # ---- test vectors, documents and measurement data ---------------------
 /kat/

@@ -6,6 +6,16 @@ NTT mod 3329 : 7 layers, twiddle k = 17^brv7(k)          (same tree as mod 257; 
 NTT mod 12289: complete NTT, twiddle k = psi^brv_logn(k), psi = 11^((q-1)/(2n))   (used for w*c1)
 
 All Montgomery constants use R = 2^16.
+
+With a second output file the script also writes the Plantard tables of the Cortex-M4 assembly kernels
+(src/armv7em/end_tables_plant.h) and, with --check, verifies every constant exhaustively (needs numpy):
+    python3 scripts/gen_tables.py src/common/end_tables.h src/armv7em/end_tables_plant.h --check
+
+Plantard arithmetic (Huang et al., ePrint 2022/956), word size 16, as executed by the ARM sequences
+    twiddle multiplication : smulwb/smulwt, smlabt x2, pkhtb       ->  a * z mod p   in [-(p-1)/2, (p-1)/2]
+    reduction of a 32-bit c: mul c, pinv32 ; smlatt .., q, qa      ->  c * (-2^-32) mod p
+with q in the top half of a register, qa = p * 2^alpha, and the constant of a twiddle z
+    plant(z) = ((z * (-2^32) mod p) * p^-1) mod 2^32   (signed 32 bits).
 """
 import sys
 
@@ -82,7 +92,209 @@ def gen(out):
     w("#define END_INV_QQP_MONT_MOD3329 %d /* (257*12289)^-1 * 2^16 mod 3329, centred */\n" % centered(pow(257 * QP, 3329 - 2, 3329) * 65536, 3329))
     w("#endif\n")
 
+# ---------------------------------------------------------------------------------------------
+# Plantard tables for the Cortex-M4 assembly kernels
+# ---------------------------------------------------------------------------------------------
+PLANT_ALPHA = {257: 6, 3329: 3, 12289: 1}      # qa = p * 2^alpha < 2^15
+
+def plant(z, p):
+    """Plantard constant of the twiddle z (signed 32 bits)."""
+    v = ((z * (-(1 << 32))) % p) * pow(p, -1, 1 << 32) % (1 << 32)
+    return v - (1 << 32) if v >= (1 << 31) else v
+
+def tables7(p, g):
+    """Twiddles (plain values mod p) of the 7-layer transforms, in the order in which the merged layers use them.
+
+    forward : 4 layers on 16 words (15 twiddles, kept in FPU registers), then 3 layers per block of
+              N/16 coefficients (7 twiddles per block, 16 blocks).
+    inverse : Cooley-Tukey butterflies on the bit-reversed input, then a twist (psi = g, omega = psi^2):
+              a_P = psi^-P / 128 * sum_i A_i omega^(-brv7(i) P). The layer with half-size m pairs the
+              positions P, P + m with the twiddle omega^(-(64/m) (P mod m)).
+              [e^0 .. e^7], e = omega^-8: all twiddles of the layers m = 1, 2, 4, 8 (same in every block);
+              then for each column j = 0..15 (positions j + 16 i): the twiddle of m = 16, the two of
+              m = 32, the four of m = 64 and the eight twist factors psi^-(j + 16 i) / 128.
+    base    : [c] followed by +-zeta_leaf * c for the 128 leaves, c = -2^32 mod p (cancels the factor
+              of the final Plantard reduction of the leaf products).
+    """
+    z = [pow(g, brv(k, 7), p) for k in range(128)]
+    ninv = pow(128, p - 2, p)
+    c = (-(1 << 32)) % p
+    fwd = [z[k] for k in range(1, 16)]
+    for b in range(16):
+        fwd += [z[16 + b], z[32 + 2 * b], z[33 + 2 * b]] + [z[64 + 4 * b + i] for i in range(4)]
+    gi = pow(g, p - 2, p)           # psi^-1
+    wi = gi * gi % p                # omega^-1
+    inv = [pow(wi, 8 * i, p) for i in range(8)]
+    for j in range(16):
+        inv += [pow(wi, 4 * j, p), pow(wi, 2 * j, p), pow(wi, 2 * (j + 16), p)]
+        inv += [pow(wi, j + 16 * i, p) for i in range(4)]
+        inv += [pow(gi, j + 16 * i, p) * ninv % p for i in range(8)]
+    base = [c] + [(z[64 + blk // 2] if blk % 2 == 0 else p - z[64 + blk // 2]) * c % p for blk in range(128)]
+    return fwd, inv, base
+
+# butterflies (i0, i1, index of the twiddle) of the inverse transforms, as executed by ntt_m4.i
+INV7_LIGHT = ((0, 1, 0), (2, 3, 0), (4, 5, 0), (6, 7, 0), (0, 2, 0), (4, 6, 0), (1, 3, 4), (5, 7, 4),
+              (0, 4, 0), (1, 5, 2), (2, 6, 4), (3, 7, 6))                       # ict3_light, twiddles e^index
+INV7_COL = ((0, 1, 0), (2, 3, 0), (4, 5, 0), (6, 7, 0), (0, 2, 1), (4, 6, 1), (1, 3, 2), (5, 7, 2),
+            (0, 4, 3), (1, 5, 4), (2, 6, 5), (3, 7, 6))                         # ict3_twist, constants of the column
+
+def check_inv7():
+    """The inverse tables, used in the order of the assembly, invert the reference 7-layer transform."""
+    import random
+    for p, g in ((257, 3), (3329, 17)):
+        z = [pow(g, brv(k, 7), p) for k in range(128)]
+        inv = tables7(p, g)[1]
+        assert len(inv) == 248
+        rng = random.Random(p)
+        a = [rng.randrange(p) for _ in range(128)]
+        x = a[:]
+        k, ln = 1, 64                                   # forward transform on the 128 leaf positions (src/ref)
+        while ln >= 1:
+            for st in range(0, 128, 2 * ln):
+                for j in range(st, st + ln):
+                    t = z[k] * x[j + ln] % p
+                    x[j], x[j + ln] = (x[j] + t) % p, (x[j] - t) % p
+                k += 1
+            ln >>= 1
+
+        def bfly(i0, i1, tw):
+            t = tw * x[i1] % p
+            x[i0], x[i1] = (x[i0] + t) % p, (x[i0] - t) % p
+
+        e = inv[:8]
+        for blk in range(0, 128, 16):                   # layers m = 1, 2, 4, 8
+            for half in (8, 0):
+                for (i0, i1, ti) in INV7_LIGHT:
+                    bfly(blk + half + i0, blk + half + i1, e[ti])
+            for i in range(8):
+                bfly(blk + i, blk + 8 + i, e[i])
+        for j in range(16):                             # layers m = 16, 32, 64 and the twist
+            t = inv[8 + 15 * j:23 + 15 * j]
+            for (i0, i1, ti) in INV7_COL:
+                bfly(j + 16 * i0, j + 16 * i1, t[ti])
+            for i in range(8):
+                x[j + 16 * i] = x[j + 16 * i] * t[7 + i] % p
+        assert x == a, p
+    print("inverse 7-layer tables: the merged schedule inverts the reference transform (mod 257, mod 3329)")
+
+def tables12289(n):
+    """Twiddles (plain values mod 12289) of the complete transform, in the order used by ntt12289_m4.S.
+
+    forward : [1], the 15 twiddles of layers 1-4, 15 per block for layers 5-8 (16 blocks), then the last
+              layer(s) per pair of adjacent words: n = 512: the two in-word twiddles of layer 9;
+              n = 1024: the twiddle of layer 9 and the two in-word twiddles of layer 10.
+    inverse : [1], the mirror image: last layer(s) per pair of words, then per block the 8 + 4 + 2 + 1 twiddles
+              of layers 8-5 followed by 1, then the 16 constants of layers 4-1 (scaled by 1/n).
+    """
+    QP = 12289
+    logn = n.bit_length() - 1
+    psi = pow(11, (QP - 1) // (2 * n), QP)
+    z = [pow(psi, brv(k, logn), QP) for k in range(n)]
+    zi = [pow(x, QP - 2, QP) for x in z]
+    ninv = pow(n, QP - 2, QP)
+    fwd = [1] + z[1:16]
+    for b in range(16):
+        fwd += [z[16 + b], z[32 + 2 * b], z[33 + 2 * b]] + z[64 + 4 * b:68 + 4 * b] + z[128 + 8 * b:136 + 8 * b]
+    inv = [1]
+    if n == 512:
+        fwd += z[256:512]
+        inv += zi[256:512]
+    else:
+        for i in range(256):
+            fwd += [z[256 + i], z[512 + 2 * i], z[513 + 2 * i]]
+            inv += [zi[512 + 2 * i], zi[513 + 2 * i], zi[256 + i]]
+    for b in range(16):
+        inv += zi[128 + 8 * b:136 + 8 * b] + zi[64 + 4 * b:68 + 4 * b] + [zi[32 + 2 * b], zi[33 + 2 * b], zi[16 + b], 1]
+    inv += zi[8:16] + zi[4:8] + [zi[2], zi[3], zi[1] * ninv % QP, ninv]
+    return fwd, inv
+
+def dump32(w, name, vals, per=8):
+    w("static const int32_t %s[%d] = {\n" % (name, len(vals)))
+    for i in range(0, len(vals), per):
+        w(",".join(str(x) for x in vals[i:i + per]) + ",\n")
+    w("};\n")
+
+def gen_plant(out):
+    w = out.write
+    w("/* generated by scripts/gen_tables.py -- do not edit */\n#ifndef END_TABLES_PLANT_H\n#define END_TABLES_PLANT_H\n#include <stdint.h>\n\n")
+    w("/* Plantard constants: plant(z) = ((z * (-2^32) mod p) * p^-1) mod 2^32, see scripts/gen_tables.py */\n")
+    for p, g in ((257, 3), (3329, 17)):
+        fwd, inv, base = tables7(p, g)
+        w("/* mod %d: p^-1 mod 2^32 = 0x%08x, qa = p * 2^%d = %d */\n" % (p, pow(p, -1, 1 << 32), PLANT_ALPHA[p], p << PLANT_ALPHA[p]))
+        w("/* forward: 15 twiddles of layers 1-4, then 7 per block for layers 5-7 (one pad word) */\n")
+        dump32(w, "end_plant_ntt%d" % p, [plant(x, p) for x in fwd] + [0])
+        w("/* inverse: 8 twiddles of the layers m = 1, 2, 4, 8, then per column 7 twiddles (m = 16, 32, 64) and 8 twist factors */\n")
+        dump32(w, "end_plant_intt%d" % p, [plant(x, p) for x in inv])
+        w("/* leaf products: plant(c), then plant(+-zeta_leaf * c) for the 128 leaves, c = -2^32 mod p */\n")
+        dump32(w, "end_plant_base%d" % p, [plant(x, p) for x in base])
+        w("\n")
+    p = 12289
+    w("/* mod %d: p^-1 mod 2^32 = 0x%08x, qa = p * 2^%d = %d */\n" % (p, pow(p, -1, 1 << 32), PLANT_ALPHA[p], p << PLANT_ALPHA[p]))
+    w("#define END_PLANT_C12289 %d   /* plant(c), c = -2^32 mod 12289: scales one operand of a pointwise product */\n" % plant((-(1 << 32)) % p, p))
+    for n in (512, 1024):
+        fwd, inv = tables12289(n)
+        w("/* n = %d, forward: plant(1), 15 twiddles of layers 1-4, 15 per block for layers 5-8, then the last layer(s) per pair of words */\n" % n)
+        dump32(w, "end_plant_ntt12289_%d" % n, [plant(x, p) for x in fwd])
+        w("/* n = %d, inverse: plant(1), last layer(s) per pair of words, 16 per block for layers 8-5, 16 constants of layers 4-1 (scaled by 1/n) */\n" % n)
+        dump32(w, "end_plant_intt12289_%d" % n, [plant(x, p) for x in inv])
+        w("\n")
+    w("#endif\n")
+
+def check_plant():
+    """Exhaustive verification of every Plantard constant against plain modular arithmetic."""
+    import numpy as np
+    a = np.arange(-32768, 32768, dtype=np.int64)
+
+    def wrap32(x):
+        return ((x + (1 << 31)) & 0xFFFFFFFF) - (1 << 31)
+
+    def wrap16(x):
+        return ((x + (1 << 15)) & 0xFFFF) - (1 << 15)
+
+    def mul_twiddle(zp, p):
+        tmp = wrap32((zp * a) >> 16)                                        # smulwb / smulwt
+        return wrap32(wrap16(tmp) * p + (p << PLANT_ALPHA[p])) >> 16         # smlabt, top half
+
+    def plant_red(c, p):
+        t = (c.astype(np.uint64) * np.uint64(pow(p, -1, 1 << 32))).astype(np.int64)   # mul (wraps mod 2^64)
+        tmp = wrap32(t)
+        return wrap32(wrap16(tmp >> 16) * p + (p << PLANT_ALPHA[p])) >> 16   # smlatt, top half
+
+    total = 0
+    for p, g in ((257, 3), (3329, 17), (12289, 11)):
+        assert (p << PLANT_ALPHA[p]) < (1 << 15)
+        h = (p - 1) // 2
+        if p == 12289:
+            tabs = tables12289(512) + tables12289(1024) + ([(-(1 << 32)) % p],)
+        else:
+            tabs = tables7(p, g)
+        for tab in tabs:
+            for z in tab:
+                r = mul_twiddle(plant(z, p), p)
+                assert not np.any((r - a * z) % p), (p, z)
+                assert r.min() >= -h and r.max() <= h, (p, z, r.min(), r.max())
+                total += 1
+        # 32-bit reduction on its whole valid input interval: both ends and a random sample
+        lo = p * (1 << 16) - p * (1 << (16 + PLANT_ALPHA[p]))
+        hi = min(1 << 31, (1 << 32) - p * (1 << (16 + PLANT_ALPHA[p])))
+        rng = np.random.default_rng(p)
+        c = np.concatenate([np.arange(lo, lo + 100000), np.arange(hi - 100000, hi), rng.integers(lo, hi, 4000000)])
+        r = plant_red(c, p)
+        rinv = (-pow(1 << 32, -1, p)) % p
+        assert not np.any((r - (c % p) * rinv) % p), p
+        assert r.min() >= -h - 1 and r.max() <= h + 1, (p, r.min(), r.max())
+        print("mod %d: plant_red valid for c in [%d, %d), output in [%d, %d]" % (p, lo, hi, r.min(), r.max()))
+    print("checked %d Plantard twiddles x 65536 inputs" % total)
+
 if __name__ == '__main__':
-    with open(sys.argv[1], 'w') as fp:
+    args = [x for x in sys.argv[1:] if not x.startswith("--")]
+    with open(args[0], 'w', newline="\n") as fp:
         gen(fp)
-    print("wrote", sys.argv[1])
+    print("wrote", args[0])
+    if len(args) > 1:
+        with open(args[1], 'w', newline="\n") as fp:
+            gen_plant(fp)
+        print("wrote", args[1])
+    if "--check" in sys.argv:
+        check_inv7()
+        check_plant()

@@ -9,7 +9,8 @@
  * Message    : s[i*MB + j] = bit i of m'[j] ; s[n/2 + i*MB + j] = bit i of r[j].
  *
  * All decoders are total functions (any byte string decodes to in-range coefficients) and run in
- * constant time; divisions use reciprocal multiplication with limb-wise correction (no 128-bit types).
+ * constant time; divisions use reciprocal multiplication (one 32x32 -> 64 product per digit, no division
+ * instruction, no 128-bit types).
  */
 #include <string.h>
 #include "end_internal.h"
@@ -52,29 +53,56 @@ static inline uint16_t ct_mod3_u16(uint16_t a)    /* a < 258 */
     return (uint16_t)x;
 }
 
-/* x / d and x mod d for a 64-bit x and a small constant d, limb-wise (16 bits per step), constant time.
- * mfloor = floor(2^32 / d). Each step's quotient estimate is floor(t/d) or floor(t/d)-1 (t < d*2^16). */
-static inline void ct_divmod_small_u64(uint64_t x, uint32_t d, uint32_t mfloor, uint64_t *q_out, uint16_t *r_out)
+/* y / d and y mod d for a 32-bit y and a small constant d, m = floor(2^32 / d). The estimate floor(y m / 2^32)
+ * is floor(y / d) or one less, so one correction suffices: one 32x32 -> 64 multiplication per digit. */
+static inline uint32_t ct_divmod_u32(uint32_t y, uint32_t d, uint32_t m, uint32_t *r_out)
 {
-    uint64_t q = 0;
-    uint32_t r = 0;
-    int s;
-    for (s = 48; s >= 0; s -= 16) {
-        uint32_t t = (r << 16) | (uint32_t)((x >> s) & 0xFFFFu);
-        uint32_t qq = (uint32_t)(((uint64_t)t * mfloor) >> 32);
-        uint32_t m;
-        r = t - qq * d;
-        m = ct_ge_mask_u32(r, d);
-        r -= d & m;
-        qq += m & 1u;
-        q = (q << 16) | qq;
-    }
-    *q_out = q;
-    *r_out = (uint16_t)r;
+    uint32_t q = (uint32_t)(((uint64_t)y * m) >> 32);
+    uint32_t r = y - q * d;                                     /* [0, 2d) */
+    uint32_t ge = ct_ge_mask_u32(r, d);
+    *r_out = r - (d & ge);
+    return q + (ge & 1u);
+}
+/* x / d and x mod d for x < 2^(32+sh) and a constant d with 2^(sh+5) < d < 2^27, m = floor(2^(32+sh) / d).
+ * The estimate floor((x >> sh) m / 2^32) is at most two short (x 2^-(32+sh) + 2^sh / d < 1.04), and the true
+ * remainder before correction is below 3d < 2^31, so it can be computed modulo 2^32. */
+static inline uint32_t ct_divmod_wide(uint64_t x, unsigned sh, uint32_t d, uint32_t m, uint32_t *r_out)
+{
+    uint32_t q = (uint32_t)(((uint64_t)(uint32_t)(x >> sh) * m) >> 32);
+    uint32_t r = (uint32_t)x - q * d;
+    uint32_t ge;
+    ge = ct_ge_mask_u32(r, d); r -= d & ge; q += ge & 1u;
+    ge = ct_ge_mask_u32(r, d); r -= d & ge; q += ge & 1u;
+    *r_out = r;
+    return q;
 }
 #define MFLOOR86 49941480u   /* floor(2^32/86) */
 #define MFLOOR90 47721858u   /* floor(2^32/90) */
 #define MFLOOR3  1431655765u /* floor(2^32/3)  */
+#define POW86_4   54700816u  /* 86^4 */
+#define MWIDE86_4 5145718u   /* floor(2^48 / 86^4): base-86 words are below 2^48 */
+#define POW90_4   65610000u  /* 90^4 */
+#define MWIDE90_4 68641969u  /* floor(2^52 / 90^4): base-90 words are below 2^52 */
+
+/* the seven base-86 digits of x < 2^48, least significant first (digits beyond the seventh are dropped) */
+static inline void digits86_7(int16_t *out, uint64_t x)
+{
+    uint32_t lo, r, hi = ct_divmod_wide(x, 16, POW86_4, MWIDE86_4, &lo);    /* x = hi 86^4 + lo */
+    lo = ct_divmod_u32(lo, 86, MFLOOR86, &r); out[0] = (int16_t)r;
+    lo = ct_divmod_u32(lo, 86, MFLOOR86, &r); out[1] = (int16_t)r;
+    lo = ct_divmod_u32(lo, 86, MFLOOR86, &r); out[2] = (int16_t)r;
+    out[3] = (int16_t)lo;
+    hi = ct_divmod_u32(hi, 86, MFLOOR86, &r); out[4] = (int16_t)r;
+    hi = ct_divmod_u32(hi, 86, MFLOOR86, &r); out[5] = (int16_t)r;
+    (void)ct_divmod_u32(hi, 86, MFLOOR86, &r); out[6] = (int16_t)r;
+}
+/* CRT mod 258 of a base-86 digit and a base-3 digit: (87 r86 + 172 r3) mod 258, with 257 folded to 0 */
+static inline int16_t crt258(uint32_t r86, uint32_t r3)
+{
+    uint32_t x = r86 * 87u + r3 * 172u;                         /* <= 85*87 + 2*172 = 7739 */
+    x -= 258u * ((x * 16257u) >> 22);                           /* x mod 258: 16257/2^22 = 1/258 + 1.8e-9, exact below 9000 */
+    return (int16_t)(x - (257u & ct_ge_mask_u32(x, 257u)));
+}
 
 static inline void store64_le(uint8_t *out, uint64_t x) { int i; for (i = 0; i < 8; i++) out[i] = (uint8_t)(x >> (8 * i)); }
 static inline uint64_t load64_le(const uint8_t *in) { uint64_t x = 0; int i; for (i = 7; i >= 0; i--) x = (x << 8) | in[i]; return x; }
@@ -182,7 +210,6 @@ void pk_decode(int16_t h[END_N], const uint8_t in[END_PKBYTES])
 {
     uint64_t tmp[PK_NW86];
     uint32_t tmp32[PK_NW3 + 1];
-    uint16_t r86[END_N], r3[END_N];
     uint32_t t;
     size_t i, j, k, idx;
 
@@ -208,25 +235,22 @@ void pk_decode(int16_t h[END_N], const uint8_t in[END_PKBYTES])
 #if END_N == 512
     tmp[72] = 0;
     for (i = 0; i < 6; i++) tmp[72] |= ((uint64_t)in[405 + i]) << (8 * i);
-    r86[END_N - 1] = in[411];
-    for (i = 0; i < 73; i++) {
-        uint64_t x = tmp[i];
-        for (k = 0; k < 7; k++) { uint64_t q; uint16_t r; ct_divmod_small_u64(x, 86, MFLOOR86, &q, &r); r86[7 * i + k] = r; x = q; }
-    }
+    h[END_N - 1] = in[411];                                      /* a raw byte: may exceed 85 in an invalid key */
+    for (i = 0; i < 73; i++)
+        digits86_7(h + 7 * i, tmp[i]);                           /* h holds the base-86 digits for now */
 #else
     tmp[144] = 0; tmp[145] = 0;
     for (i = 0; i < 5; i++) { tmp[144] |= ((uint64_t)in[810 + i]) << (8 * i); tmp[145] |= ((uint64_t)in[815 + i]) << (8 * i); }
     tmp[144] |= ((uint64_t)((in[820] >> 3) & 31u)) << 40;
     tmp[145] |= ((uint64_t)((in[821] >> 3) & 31u)) << 40;
     tmp[146] = (uint64_t)(in[820] & 7u) | ((uint64_t)(in[821] & 7u) << 3) | ((uint64_t)in[822] << 6);
-    for (i = 0; i < 146; i++) {
-        uint64_t x = tmp[i];
-        for (k = 0; k < 7; k++) { uint64_t q; uint16_t r; ct_divmod_small_u64(x, 86, MFLOOR86, &q, &r); r86[7 * i + k] = r; x = q; }
-    }
+    for (i = 0; i < 146; i++)
+        digits86_7(h + 7 * i, tmp[i]);                           /* h holds the base-86 digits for now */
     {
-        uint64_t x = tmp[146], q; uint16_t r;
-        ct_divmod_small_u64(x, 86, MFLOOR86, &q, &r); r86[END_N - 2] = r;
-        ct_divmod_small_u64(q, 86, MFLOOR86, &q, &r); r86[END_N - 1] = r;
+        uint32_t r, x = ct_divmod_u32((uint32_t)tmp[146], 86, MFLOOR86, &r);
+        h[END_N - 2] = (int16_t)r;
+        (void)ct_divmod_u32(x, 86, MFLOOR86, &r);
+        h[END_N - 1] = (int16_t)r;
     }
 #endif
     /* base-3 part */
@@ -251,17 +275,22 @@ void pk_decode(int16_t h[END_N], const uint8_t in[END_PKBYTES])
         for (gi = 0; gi < ngroups; gi++)
             tmp32[6 * gi + 5] += ((t >> (2 * (ngroups - 1 - gi))) & 3u) << 25;
     }
+    /* base-3 digits, combined on the fly: CRT mod 258, x = r86 * 87 + r3 * 172 (mod 258), 257 folded to 0 */
     for (i = 0; i < PK_NW3; i++) {
-        uint32_t x = tmp32[i];
-        for (k = 0; k < 17; k++) { uint64_t q; uint16_t r; ct_divmod_small_u64(x, 3, MFLOOR3, &q, &r); r3[17 * i + k] = r; x = (uint32_t)q; }
+        uint32_t x = tmp32[i], r;
+        for (k = 0; k < 17; k++) {
+            x = ct_divmod_u32(x, 3, MFLOOR3, &r);
+            h[17 * i + k] = crt258((uint32_t)h[17 * i + k], r);
+        }
     }
     {
-        uint32_t x = tmp32[PK_NW3];
-        for (k = 0; k < (END_N == 512 ? 2u : 4u); k++) { uint64_t q; uint16_t r; ct_divmod_small_u64(x, 3, MFLOOR3, &q, &r); r3[17 * PK_NW3 + k] = r; x = (uint32_t)q; }
+        /* the last coefficients; the general reduction keeps the result defined for a raw byte above 85 */
+        uint32_t x = tmp32[PK_NW3], r;
+        for (k = 0; k < (END_N == 512 ? 2u : 4u); k++) {
+            x = ct_divmod_u32(x, 3, MFLOOR3, &r);
+            h[17 * PK_NW3 + k] = red257((int16_t)ct_mod258_u32_small((uint32_t)h[17 * PK_NW3 + k] * 87u + r * 172u));
+        }
     }
-    /* CRT mod 258: x = r86 * 87 + r3 * 172 (mod 258); a value of 257 is folded to 0 by red257 */
-    for (i = 0; i < END_N; i++)
-        h[i] = red257((int16_t)ct_mod258_u32_small((uint32_t)r86[i] * 87u + (uint32_t)r3[i] * 172u));
 }
 
 /* ------------------------------------------------------------------------- */
@@ -347,8 +376,10 @@ void ct_decode(int16_t c[END_N], const uint8_t in[END_CTBYTES])
         index += 4; j++;
     }
     for (i = 0; i < 128; i++) {
-        uint64_t x = tmp[i];
-        for (j = 0; j < 8; j++) { uint64_t q; uint16_t r; ct_divmod_small_u64(x, 90, MFLOOR90, &q, &r); c[8 * i + j] = (int16_t)r; x = q; }
+        uint32_t lo, r, hi = ct_divmod_wide(tmp[i], 20, POW90_4, MWIDE90_4, &lo);   /* word < 2^52 = hi 90^4 + lo */
+        for (j = 0; j < 3; j++) { lo = ct_divmod_u32(lo, 90, MFLOOR90, &r); c[8 * i + j] = (int16_t)r; }
+        c[8 * i + 3] = (int16_t)lo;
+        for (j = 4; j < 8; j++) { hi = ct_divmod_u32(hi, 90, MFLOOR90, &r); c[8 * i + j] = (int16_t)r; }
     }
 }
 #endif

@@ -10,6 +10,7 @@
 
 #define NW (END_N / 2)
 
+#ifndef END_M4_ASM   /* with END_M4_ASM: deckern_m4.S */
 void poly_rot16(int16_t r[END_N], const int16_t a[END_N], uint32_t k)
 {
     int32_t t[NW], u[NW];
@@ -39,6 +40,8 @@ void poly_rot16(int16_t r[END_N], const int16_t a[END_N], uint32_t k)
     memcpy(r, t, sizeof t);
 }
 
+#endif
+
 uint64_t poly_sqnorm16(const int16_t a[END_N])
 {
     int64_t acc = 0;
@@ -50,6 +53,7 @@ uint64_t poly_sqnorm16(const int16_t a[END_N])
     return (uint64_t)acc;
 }
 
+#ifndef END_M4_ASM   /* with END_M4_ASM: deckern_m4.S */
 void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask)
 {
     uint32_t m = (uint32_t)mask | ((uint32_t)mask << 16);
@@ -57,23 +61,4 @@ void poly_cmov16(int16_t r[END_N], const int16_t a[END_N], uint16_t mask)
     for (i = 0; i < NW; i++)
         dsp_store_pair(r, i, (int32_t)(((uint32_t)dsp_load_pair(a, i) & m) | ((uint32_t)dsp_load_pair(r, i) & ~m)));
 }
-
-void fcl_select(uint32_t idx[], unsigned m0, const uint32_t scores[END_N])
-{
-    uint32_t best[END_FCL_MAX], bidx[END_FCL_MAX];
-    unsigned i, j;
-    for (j = 0; j < m0; j++) { best[j] = 0xFFFFFFFFu; bidx[j] = 0xFFFFFFFFu; }
-    for (i = 0; i < END_N; i++) {
-        uint32_t cs = scores[i], ci = i;
-        for (j = 0; j < m0; j++) {
-            /* lexicographic (score, index): ties resolve towards the smaller index (see src/ref/polyvec.c) */
-            uint32_t lt = ct_mask_lt_u32(cs, best[j]) | (ct_mask_eq_u32(cs, best[j]) & ct_mask_lt_u32(ci, bidx[j]));
-            uint32_t ns = (best[j] & lt) | (cs & ~lt);
-            uint32_t ni = (bidx[j] & lt) | (ci & ~lt);
-            best[j] = (cs & lt) | (best[j] & ~lt);
-            bidx[j] = (ci & lt) | (bidx[j] & ~lt);
-            cs = ns; ci = ni;
-        }
-    }
-    for (j = 0; j < m0; j++) idx[j] = bidx[j];
-}
+#endif

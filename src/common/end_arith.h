@@ -98,18 +98,25 @@ static inline int16_t canon12289(int16_t x)          /* any int16 -> [0, 12289) 
 static inline int16_t fqmul12289(int16_t a, int16_t b) { return mont12289((int32_t)a * b); }
 
 /* ---- rounding helpers used by the decoder ----------------------------- */
-/* round((v)/(2qQ)) with ties towards +inf, for |v| < 2^27, constant time (Barrett, M = ceil(2^50/2qQ)) */
+/*
+ * r = round(v / 2qQ) with ties towards +inf, for |v| < 2^27, constant time; *c receives v - 2qQ r in [-qQ, qQ).
+ * x = v + qQ + 32*2qQ is in (0, 2^29) and r = floor(x / 2qQ) - 32. With M = floor(2^32 / 2qQ) = 679 the estimate
+ * floor(x M / 2^32) is floor(x / 2qQ) or one less (x (2^32/2qQ - M) / 2^32 < 0.08), so one correction suffices.
+ * Only a 32x32 -> 64 multiplication is needed (one UMULL on ARM, one vector multiply-high elsewhere).
+ */
+static inline int32_t round_div_2qqp_rem(int32_t v, int32_t *c)
+{
+    uint32_t x = (uint32_t)(v + END_QQP + 32 * END_2QQP);
+    uint32_t q = (uint32_t)(((uint64_t)x * 679u) >> 32);
+    int32_t r = (int32_t)(x - q * (uint32_t)END_2QQP) - END_2QQP;    /* [-2qQ, 2qQ): non-negative iff q was one short */
+    int32_t neg = r >> 31;
+    *c = r + (END_2QQP & neg) - END_QQP;
+    return (int32_t)q + neg - 31;
+}
 static inline int32_t round_div_2qqp(int32_t v)
 {
-    const int64_t M = 178246135; /* ceil(2^50 / 6316546) */
-    int64_t x = (int64_t)v + END_QQP + (int64_t)8 * END_2QQP;   /* positive */
-    int32_t q = (int32_t)((x * M) >> 50);
-    int32_t r = (int32_t)(x - (int64_t)q * END_2QQP);
-    /* correct a possible +1 overestimate (r < 0) or -1 underestimate (r >= 2qQ) */
-    q += (r >> 31);
-    r += (r >> 31) & END_2QQP;
-    q += ~((r - END_2QQP) >> 31) & 1;
-    return q - 8;
+    int32_t c;
+    return round_div_2qqp_rem(v, &c);
 }
 
 /* centre v mod 2qQ into [-qQ, qQ) for |v| < 2*2qQ */

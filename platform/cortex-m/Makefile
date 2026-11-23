@@ -71,6 +71,11 @@ KERNEL_SRCS  := $(foreach k,$(KERNELS),$(if $(wildcard $(ROOT)/src/$(SRCBK)/$(k)
 KERNEL_ASM   := $(wildcard $(ROOT)/src/$(SRCBK)/*.S)
 COMMON_SRCS  := $(ROOT)/src/common/end_codec.c $(ROOT)/src/common/end_decode.c $(ROOT)/src/common/end_kem.c \
                 $(ROOT)/src/common/end_keygen.c $(ROOT)/src/common/fips202.c
+ifeq ($(SRCBK),armv7em)
+KERNEL_SRCS += $(ROOT)/src/armv7em/pk_decode.c
+# Preserve the portable decoder for comparison; callers keep the public symbol.
+$(BUILD)/src/common/end_codec.o: private CPPFLAGS += -Dend$(END_N)_pk_decode=end$(END_N)_pk_decode_portable
+endif
 NTRUGEN_SRCS := $(ROOT)/src/common/ntrugen/ntru.c $(ROOT)/src/common/ntrugen/module_p.c $(ROOT)/src/common/ntrugen/big_integer.c \
                 $(ROOT)/src/common/ntrugen/fixed_point.c $(ROOT)/src/common/ntrugen/poly_big.c
 PLAT_SRCS    := startup.c randombytes_m.c $(ROOT)/bench/cycles.c
@@ -78,10 +83,18 @@ LIB_SRCS     := $(KERNEL_SRCS) $(COMMON_SRCS) $(NTRUGEN_SRCS) $(PLAT_SRCS)
 LIB_OBJS     := $(patsubst %.c,$(BUILD)/%.o,$(subst $(ROOT)/,,$(LIB_SRCS))) $(patsubst %.S,$(BUILD)/%.o,$(subst $(ROOT)/,,$(KERNEL_ASM))) $(patsubst %.S,$(BUILD)/%.o,$(PLAT_ASM))
 
 TESTS := test_kernels test_kat test_roundtrip test_wraps bench
+ifeq ($(SRCBK),armv7em)
+TESTS += test_m_pk_decode
+endif
 ELFS  := $(addprefix $(BUILD)/,$(addsuffix .elf,$(TESTS)))
 
 all: $(ELFS)
 	$(SIZE) $(ELFS)
+
+ifeq ($(SRCBK),armv7em)
+# An existing checkout may already have built this object with its old name.
+$(BUILD)/src/common/end_codec.o: Makefile
+endif
 
 # constant tables: generated, not stored in the repository (the rule is in the top-level Makefile)
 TABLES := $(ROOT)/src/common/end_tables.h $(ROOT)/src/armv7em/end_tables_plant.h
@@ -109,6 +122,8 @@ $(BUILD)/libend.a: $(LIB_OBJS)
 
 $(BUILD)/test_kernels.elf: $(ROOT)/test/test_kernels.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libend.a -o $@ $(LDFLAGS) $(LDLIBS)
+$(BUILD)/test_m_pk_decode.elf: $(ROOT)/test/test_m_pk_decode.c $(BUILD)/libend.a
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libend.a -o $@ $(LDFLAGS) $(LDLIBS)
 $(BUILD)/test_kat.elf: $(ROOT)/test/test_kat.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libend.a -o $@ $(LDFLAGS) $(LDLIBS)
 $(BUILD)/test_roundtrip.elf: $(ROOT)/test/test_roundtrip.c $(BUILD)/libend.a
@@ -117,6 +132,8 @@ $(BUILD)/test_wraps.elf: $(ROOT)/test/test_wraps.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libend.a -o $@ $(LDFLAGS) $(LDLIBS)
 $(BUILD)/bench.elf: $(ROOT)/bench/bench.c $(BUILD)/libend.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libend.a -o $@ $(LDFLAGS) $(LDLIBS)
+$(BUILD)/bench_ones257.elf: $(ROOT)/bench/bench_ones257.c $(ROOT)/bench/ones257_m.S $(BUILD)/libend.a
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 # run under QEMU with semihosting; file paths in the tests are relative to the project root
 QEMU_ARGS = -M $(QEMU_MACHINE) -cpu $(CPU) -nographic -semihosting-config enable=on,target=native -monitor none -serial none

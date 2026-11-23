@@ -9,7 +9,7 @@
 | `src/common/` | 与后端无关的方案层：参数、编解码、密钥生成（含 ntrugen 求解器）、DecodeTrap 解码、ACWC/FO 变换、API |
 | `src/ref/` | 可移植 C 内核（基线、正确性参照、回退路径） |
 | `src/aarch64/` | Cortex-A：AArch64 NEON intrinsics 内核 |
-| `src/armv7em/` | Cortex-M4/M33：C + DSP 内核（`BACKEND=armv7em`）和手写 Thumb-2 汇编内核（`BACKEND=m4f`：Plantard 算术、NTT 层合并、FPU 寄存器作暂存） |
+| `src/armv7em/` | Cortex-M4/M33 的 `armv7em` 和 `m4f` 后端共用公钥解码器及整数 DSP 汇编 CRT 内核。`m4f` 还用 Thumb-2 汇编实现 Plantard 算术及 NTT 层合并，以 FPU 寄存器暂存中间量。 |
 | `platform/cortex-m/` | 裸机启动代码、链接脚本、半主机、QEMU 运行脚本 |
 | `golden/` | Python 精确算术 golden model（可执行规范）与 wrap 注入测试 |
 | `test/`, `bench/` | 测试程序、基准程序 |

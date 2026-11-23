@@ -20,6 +20,7 @@ have() {
 }
 kat="kat/kat_end${N}_ref.txt"
 run test_kernels
+if [[ "$BK" == armv7em || "$BK" == m4f ]]; then run test_m_pk_decode; fi
 if [[ "$N" == 512 ]]; then
     if have kat/kat_end512_shake256.txt; then run test_kat kat/kat_end512_shake256.txt "${KAT_MAX:-100}"; fi
     if have "$kat"; then run test_kat "$kat" "${KAT_MAX:-100}" --import; fi

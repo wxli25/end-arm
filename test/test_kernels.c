@@ -109,8 +109,10 @@ static void test_ntt(void)
         rand_poly(a, 0, 256); rand_poly(b, 0, 256);
         schoolbook(ref, a, b, 257);
         memcpy(c, a, sizeof a); memcpy(d, b, sizeof b);
-        poly_ntt257(c); poly_ntt257(d); poly_basemul257(c, c, d); poly_intt257(c);
-        for (i = 0; i < END_N; i++) CHECK(c[i] == ref[i], "basemul257 at %u: %d vs %lld", i, c[i], (long long)ref[i]);
+        poly_ntt257(c); poly_ntt257(d);
+        int16_t *product = (it & 1) ? d : c;     /* callers overwrite either operand */
+        poly_basemul257(product, c, d); poly_intt257(product);
+        for (i = 0; i < END_N; i++) CHECK(product[i] == ref[i], "basemul257 at %u: %d vs %lld", i, product[i], (long long)ref[i]);
         /* inversion: ternary-like polynomial */
         rand_poly(a, -1, 1);
         memcpy(c, a, sizeof a); poly_ntt257(c);
@@ -133,8 +135,9 @@ static void test_ntt(void)
         rand_poly(a, -40, 40); rand_poly(b, -1, 1);
         schoolbook(ref, a, b, 3329);
         memcpy(c, a, sizeof a); memcpy(d, b, sizeof b);
-        poly_ntt3329(c); poly_ntt3329(d); poly_basemul3329(c, c, d); poly_intt3329(c);
-        for (i = 0; i < END_N; i++) CHECK(modp(c[i], 3329) == ref[i], "basemul3329 at %u", i);
+        poly_ntt3329(c); poly_ntt3329(d);
+        poly_basemul3329(product, c, d); poly_intt3329(product);
+        for (i = 0; i < END_N; i++) CHECK(modp(product[i], 3329) == ref[i], "basemul3329 at %u", i);
         /* --- 12289 --- */
         rand_poly(a, -8191, 8191);
         memcpy(b, a, sizeof a);
@@ -393,6 +396,18 @@ static void test_deckern(void)
         /* CRT */
         rand_poly(c, -6144, 6144); rand_poly(d, -257, 256);
         if (it == 0) { for (i = 0; i < END_N; i++) { a[i] = 256; b[i] = 0; c[i] = (i & 1) ? 6144 : -6144; d[i] = (i & 2) ? 256 : -257; } }
+        if (it == 1 || it == 2) {
+            /* Force Q*k - t12289 to either side of the centring boundary,
+             * including both exact ties and both parities of the lift. */
+            static const int16_t residues[] = { -6144, -1, 0, 1, 6144 };
+            for (i = 0; i < END_N; i++) {
+                int k = (int)(i % 3) + 256;
+                a[i] = 0;
+                c[i] = residues[(i / 3) % 5];
+                d[i] = (int16_t)((unsigned)(k + c[i] + par) & 1u);
+                b[i] = (int16_t)modp((int64_t)END_QP * (k - d[i]) - c[i], END_Q);
+            }
+        }
         poly_crt_c2(C2, a, c, d, b, par);
         for (i = 0; i < END_N; i++) {
             int64_t u257 = modp(2 * a[i] - b[i], 257), u12 = modp(c[i], 12289);

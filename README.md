@@ -9,7 +9,7 @@ This project is an ARM implementation of the **END KEM** (END-512 / END-1024) fr
 | `src/common/` | Backend-independent scheme layer: parameters, encoding/decoding, key generation (including the ntrugen solver), DecodeTrap decoding, ACWC/FO transform, API |
 | `src/ref/` | Portable C kernels (baseline, correctness reference, fallback path) |
 | `src/aarch64/` | Cortex-A: AArch64 NEON intrinsics kernels |
-| `src/armv7em/` | Cortex-M4/M33: ARMv7E-M DSP kernels in C (`BACKEND=armv7em`) and hand-written Thumb-2 assembly kernels (`BACKEND=m4f`: Plantard arithmetic, merged NTT layers, FPU registers as scratch) |
+| `src/armv7em/` | The Cortex-M4/M33 `armv7em` and `m4f` backends share a public-key decoder and an integer DSP assembly kernel for CRT. `m4f` adds Thumb-2 kernels for Plantard arithmetic and merged NTT layers that use FPU registers as scratch. |
 | `platform/cortex-m/` | Bare-metal startup code, linker scripts, semihosting, QEMU run scripts |
 | `golden/` | Exact-arithmetic Python golden model (executable specification) and wrap-injection tests |
 | `test/`, `bench/` | Test programs, benchmarks |

@@ -37,6 +37,8 @@ int main(int argc, char **argv)
         sha3_256(ss3, buf, sizeof buf);
         if (!memcmp(ss, ss2, END_SSBYTES)) { printf("iter %d: tampered ct accepted\n", i); fails++; }
         if (memcmp(ss2, ss3, END_SSBYTES)) { printf("iter %d: rejection key != H(k||ct')\n", i); fails++; }
+        END_NS(crypto_kem_dec_exp)(ss2, ct2, &ek);
+        if (memcmp(ss2, ss3, END_SSBYTES)) { printf("iter %d: dec_exp rejection key != H(k||ct')\n", i); fails++; }
     }
     printf("test_roundtrip %s: %d failures -> %s\n", END_NAME, fails, fails ? "FAIL" : "ALL OK");
     return fails != 0;

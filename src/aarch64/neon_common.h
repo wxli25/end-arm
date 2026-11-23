@@ -68,14 +68,6 @@ static inline int16x8_t neon_canon(int16x8_t a, int16x8_t pv)
     return vaddq_s16(a, vandq_s16(pv, vshrq_n_s16(a, 15)));
 }
 
-/* int32x4 -> int16x4 : x * R^-1 mod p, in (-p, p)  (|x| < 2^15 p) */
-static inline int16x4_t neon_montred32(int32x4_t x, int32x4_t pinv32, int16x4_t p16)
-{
-    int16x4_t m = vmovn_s32(vmulq_s32(x, pinv32));          /* x * p^-1 mod 2^16 */
-    int32x4_t t = vmlsl_s16(x, m, p16);                     /* x - m p  (= 0 mod 2^16) */
-    return vshrn_n_s32(t, 16);
-}
-
 /* 64-bit lane interleave: [a.lo, b.lo] and [a.hi, b.hi] */
 static inline int16x8_t neon_zip64_lo(int16x8_t a, int16x8_t b)
 {

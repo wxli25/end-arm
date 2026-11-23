@@ -35,7 +35,10 @@ int main(int argc, char **argv)
     int insn = argc > 2 && strcmp(argv[2], "--insn") == 0;
     static uint8_t pk[END_PKBYTES], sk[END_SKBYTES], ct[END_CTBYTES], ss[END_SSBYTES], ss2[END_SSBYTES];
     static uint8_t seed[END_SEEDBYTES], m[END_MSGBYTES];
-    static uint8_t tmp[END_KEYGEN_TMPBYTES];
+    static union {
+        uint8_t keygen[END_KEYGEN_TMPBYTES];
+        int32_t crt[END_N];
+    } scratch;
     static end_expkey ek;
     static int16_t a[END_N] END_ALIGN, b[END_N] END_ALIGN, c[END_N] END_ALIGN, sbar[END_N] END_ALIGN;
     static uint8_t buf[1024];
@@ -48,10 +51,10 @@ int main(int argc, char **argv)
     if (insn) {
         /* one call per operation, selected by argv[3]; used with the QEMU 'libinsn' plugin */
         const char *op = argc > 3 ? argv[3] : "all";
-        END_NS(crypto_kem_keypair_derand)(pk, sk, seed, tmp, sizeof tmp);
+        END_NS(crypto_kem_keypair_derand)(pk, sk, seed, scratch.keygen, sizeof scratch.keygen);
         END_NS(expkey_from_sk)(&ek, sk);
         END_NS(crypto_kem_enc_derand)(ct, ss, pk, m);
-        if (!strcmp(op, "keypair")) END_NS(crypto_kem_keypair_derand)(pk, sk, seed, tmp, sizeof tmp);
+        if (!strcmp(op, "keypair")) END_NS(crypto_kem_keypair_derand)(pk, sk, seed, scratch.keygen, sizeof scratch.keygen);
         else if (!strcmp(op, "enc")) END_NS(crypto_kem_enc_derand)(ct, ss, pk, m);
         else if (!strcmp(op, "dec")) END_NS(crypto_kem_dec)(ss2, ct, sk);
         else if (!strcmp(op, "dec_exp")) END_NS(crypto_kem_dec_exp)(ss2, ct, &ek);
@@ -67,10 +70,12 @@ int main(int argc, char **argv)
         else if (!strcmp(op, "rot16")) poly_rot16(c, a, 123);
         else if (!strcmp(op, "sha3_256")) sha3_256(buf, buf, 416);
         else if (!strcmp(op, "decode_trap")) { for (i = 0; i < END_N; i++) c[i] = (int16_t)(4 * (i % 64) + 3); decode_trap(sbar, &ek, c, NULL); }
+        else if (!strcmp(op, "crt_c2")) poly_crt_c2(scratch.crt, ek.fn257, ek.f16, ek.F16, ek.wconst, ek.pwc1);
+        else if (!strcmp(op, "pk_decode")) pk_decode(a, pk);
         printf("insn mode: op=%s done\n", op);
         return 0;
     }
-    BENCH("keypair", NK, END_NS(crypto_kem_keypair_derand)(pk, sk, seed, tmp, sizeof tmp));
+    BENCH("keypair", NK, END_NS(crypto_kem_keypair_derand)(pk, sk, seed, scratch.keygen, sizeof scratch.keygen));
     BENCH("enc", N, END_NS(crypto_kem_enc_derand)(ct, ss, pk, m));
     BENCH("dec (compact sk)", N, END_NS(crypto_kem_dec)(ss2, ct, sk));
     if (memcmp(ss, ss2, END_SSBYTES)) printf("  !! dec mismatch\n");
@@ -91,6 +96,8 @@ int main(int argc, char **argv)
     BENCH("sha3_256 (416 B)", N, sha3_256(buf, buf, 416));
     for (i = 0; i < END_N; i++) c[i] = (int16_t)(4 * (i % 64) + 3);
     BENCH("decode_trap", N, decode_trap(sbar, &ek, c, NULL));
+    BENCH("poly_crt_c2", N, poly_crt_c2(scratch.crt, ek.fn257, ek.f16, ek.F16, ek.wconst, ek.pwc1));
+    BENCH("pk_decode", N, pk_decode(a, pk));
 #ifdef END_PLATFORM_STACK
     {
         extern uint32_t platform_stack_used(void);

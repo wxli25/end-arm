@@ -3,6 +3,7 @@
  * (Thumb-2 + DSP).  They replace the portable versions of src/common/end_deckern.c and of polyvec.c
  * (see end_backend.h) and compute exactly the same values.
  *
+ *   poly_crt_c2        reconstruct the centred CRT coefficient using integer DSP only
  *   poly_cand_round    rounding vector and residue of a gf-stage candidate, 32-bit arithmetic only
  *   poly_cand_combine  s~'' of a candidate and its squared norm, two coefficients per instruction
  *   poly_cand_check    GF-stage candidate and its "all entries are +-1" test
@@ -15,12 +16,82 @@
  * GE flags (UADD16 of an all-ones / all-zero mask sets or clears all four) with SEL. s0 is used as scratch.
  */
 #include "asm_defs.h"
-#ifdef END_M4_ASM
 
     .syntax unified
     .thumb
 
 #define NBYTES   (2*END_N)                  /* bytes of an int16 polynomial */
+
+#if defined(__ARM_FEATURE_DSP) && !defined(END_M_PORTABLE_CRT)
+    .text
+    .align 2
+
+/* C2 = Q*k - t12. Since Q^-1 = -175 mod 514, with w the constant
+ * coefficient and p the desired parity of u, we may take
+ * k = c2 - 175*(t12 - 2*t257 + w) + 257*((w ^ p) & 1) mod 514.
+ * Indeed 2*t257 - w + 257*((w ^ p) & 1) lifts u mod 257 to parity p.
+ * Choose k in [-257,256] when t12 <= 0, [-256,257] otherwise. */
+.macro crt_lane high
+    .if \high
+    asr     lr, r9, #16                   /* signed t12 */
+    asr     r11, r10, #16                /* c2 plus parity correction */
+    smlatb  r11, r8, r6, r11             /* k before centring */
+    .else
+    sxth    lr, r9
+    sxth    r11, r10
+    smlabb  r11, r8, r6, r11
+    .endif
+    /* Round (2*k +/- 1)/1028 to the nearest integer. The sign resolves
+     * the endpoint at k = 257 mod 514. The numerator is odd and below
+     * 2^22 in magnitude, so rounding the reciprocal cannot cross a tie. */
+    sub     r12, lr, #1
+    sub     r12, r11, r12, asr #31       /* k + (t12 <= 0) */
+    lsl     r12, r12, #1
+    sub     r12, r12, #1
+    smmulr  r12, r12, r7
+    add     r12, r12, r12, lsl #8
+    sub     r11, r11, r12, lsl #1        /* subtract 514 times the quotient */
+    add     r12, r11, r11, lsl #1
+    add     r11, r11, r12, lsl #12      /* 12289*k */
+    sub     r11, r11, lr
+    str     r11, [r0], #4
+.endm
+
+    .global END_SYM(poly_crt_c2)
+    .type END_SYM(poly_crt_c2), %function
+END_SYM(poly_crt_c2):
+    push    {r4-r11, lr}
+    ldr     r4, [sp, #36]                /* wconst */
+    ldr     r5, [sp, #40]                /* pwc1 */
+    orr     r5, r5, r5, lsl #16
+    mvn     r6, #174                     /* -175 = 12289^-1 mod 514 */
+    movw    r7, #0xc040
+    movt    r7, #0x003f                  /* round(2^32 / 1028) */
+    add     r8, r0, #(4*END_N)
+    push    {r8}
+.Lcrt_pair:
+    ldr     r8, [r1], #4                 /* t257 */
+    ldr     r9, [r2], #4                 /* t12289 */
+    ldr     r10, [r4], #4                /* wconst */
+    ldr     r11, [r3], #4                /* c2 */
+    sadd16  r8, r8, r8
+    ssub16  r8, r9, r8
+    sadd16  r8, r8, r10                 /* signed difference, fits a halfword */
+    eor     r10, r10, r5
+    and     r10, r10, #0x00010001
+    add     r10, r10, r10, lsl #8
+    sadd16  r10, r10, r11
+    crt_lane 0
+    crt_lane 1
+    ldr     r8, [sp]
+    cmp     r0, r8
+    bne     .Lcrt_pair
+    add     sp, sp, #4
+    pop     {r4-r11, pc}
+    .size END_SYM(poly_crt_c2), .-END_SYM(poly_crt_c2)
+#endif
+
+#ifdef END_M4_ASM
 #define Q        257
 #define QQP      3158273                    /* q Q                          */
 #define K2QQP    6316546                    /* 2 q Q                        */

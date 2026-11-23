@@ -4,7 +4,7 @@
 Creates six flat implementation directories, as pqm4 expects:
 
     <pqm4>/crypto_kem/end512/ref    portable C kernels (also built on the host for testvectors)
-    <pqm4>/crypto_kem/end512/m4     ARMv7E-M DSP kernels in C (src/armv7em)
+    <pqm4>/crypto_kem/end512/m4     ARMv7E-M C kernels and the integer DSP CRT assembly kernel
     <pqm4>/crypto_kem/end512/m4f    the same backend with the hand-written assembly kernels (END_M4_ASM);
                                     they use the FPU registers as scratch, hence the pqm4 name "m4f"
     <pqm4>/crypto_kem/end1024/ref
@@ -90,6 +90,8 @@ def export(pqm4, n, impl, backend, asm):
         text = (ROOT / "src/common" / name).read_text(encoding="utf-8")
         if name == "end_params.h":
             text = with_config(text)
+        if name == "end_codec.c" and backend == "armv7em":
+            text = f"#define end{n}_pk_decode end{n}_pk_decode_portable\n" + text
         (dst / name).write_text(text, encoding="utf-8", newline="\n")
     for name in NTRUGEN:
         text = (ROOT / "src/common/ntrugen" / name).read_text(encoding="utf-8")
@@ -101,6 +103,8 @@ def export(pqm4, n, impl, backend, asm):
         if not src.exists():
             src = ROOT / "src/ref" / name
         shutil.copyfile(src, dst / name)
+    if backend == "armv7em":
+        shutil.copyfile(ROOT / "src/armv7em/pk_decode.c", dst / "pk_decode.c")
     for extra in (ROOT / "src" / backend).glob("*.h"):
         text = extra.read_text(encoding="utf-8")
         if extra.name == "asm_defs.h":          # the assembly files see the configuration through this header
@@ -109,6 +113,8 @@ def export(pqm4, n, impl, backend, asm):
     if asm:
         for extra in sorted((ROOT / "src" / backend).glob("*.S")) + sorted((ROOT / "src" / backend).glob("*.i")):
             (dst / extra.name).write_text(extra.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    elif backend == "armv7em":
+        shutil.copyfile(ROOT / "src/armv7em/deckern_m4.S", dst / "deckern_m4.S")
     shutil.copyfile(GLUE / "pqm4_glue.c", dst / "pqm4_glue.c")
     (dst / "api.h").write_text(API_H.format(n=n, **SIZES[n]), encoding="utf-8", newline="\n")
     (dst / "end_config.h").write_text(CONFIG_H.format(n=n, backend=impl if asm else backend, asm=ASM_DEFINE if asm else ""),

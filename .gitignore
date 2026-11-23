@@ -7,8 +7,15 @@ src/armv7em/end_tables_plant.h
 # ---- test vectors, documents and measurement data ---------------------
 /kat/
 /docs/
+/AARCH64_NEON_OPT_PLAN.md
+/ARM_KERNEL_OPT_PLAN.md
 *_results*.txt
 *.log
+# scripts/icount_all.sh creates a temporary file beside the final report.
+icount_results.txt.??????
+# pqm4/m4model/run_m4model.sh writes these alongside the per-operation logs.
+*_build.err
+*.log.stdout
 
 # ---- local helpers ---------------------------------------------------
 scripts/wsl_make.sh
